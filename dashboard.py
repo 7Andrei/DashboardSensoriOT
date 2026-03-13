@@ -1,4 +1,5 @@
 from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State
+from colour import Color
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import plotly.express as px
@@ -12,27 +13,52 @@ df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/gapmi
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-COORDINATES = [
-    (42.004697, 12.676136), (42.004556, 12.675926), (42.004445, 12.675719),
-    (42.004297, 12.675600), (42.004482, 12.676131), (42.004378, 12.675967),
-    (42.004322, 12.675866), (42.004375, 12.676197), (42.004243, 12.676047),
-    (42.004174, 12.675815)
-]
-LINKS = [
-    (1, 2, 100.00, -45), (1, 5, 90.50, -50), (2, 3, 85.75, -55),
-    (2, 6, 80.25, -60), (3, 4, 70.00, -62), (3, 7, 65.50, -65),
-    (5, 6, 60.25, -68), (6, 7, 55.00, -70), (6, 9, 50.50, -72),
-    (7, 10, 45.50, -75), (8, 9, 40.50, -78), (9, 10, 40.50, -80)
-]
+# COORDINATES = [
+#     (42.004697, 12.676136), (42.004556, 12.675926), (42.004445, 12.675719),
+#     (42.004297, 12.675600), (42.004482, 12.676131), (42.004378, 12.675967),
+#     (42.004322, 12.675866), (42.004375, 12.676197), (42.004243, 12.676047),
+#     (42.004174, 12.675815)
+# ]
+# LINKS = [
+#     (1, 2, 100.00, -45), (1, 5, 90.50, -50), (2, 3, 85.75, -55),
+#     (2, 6, 80.25, -60), (3, 4, 70.00, -62), (3, 7, 65.50, -65),
+#     (5, 6, 60.25, -68), (6, 7, 55.00, -70), (6, 9, 50.50, -72),
+#     (7, 10, 45.50, -75), (8, 9, 40.50, -78), (9, 10, 40.50, -80)
+# ]
 
+links=query.getLinks()
+nodi=query.getNodi()
+# for link in links:
+    # print(link)
 
-lats = [lat for lat, lon in COORDINATES]
-lons = [lon for lat, lon in COORDINATES]
+maxMbps = max(link[4] for link in links)
+minMbps = min(link[4] for link in links)
+rangeMbpsOld = maxMbps - minMbps
+rangeMbpsNew = 12 - 2
+Mbps=[]
+for i in range(len(links)):
+    oldValue = links[i][4]
+    newValue = int((((oldValue - minMbps) * rangeMbpsNew) / rangeMbpsOld) + 2)
+    Mbps.append(newValue)
+
+maxRssi = max(link[5] for link in links)
+minRssi = min(link[5] for link in links)
+rangeRssiOld = maxRssi - minRssi
+Rssi=[]
+for i in range(len(links)):
+    oldValue = links[i][5]
+    newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
+    Rssi.append(newValue)
+
+colors= list(Color("red").range_to(Color("green"), 20))
+print(Mbps)
+print(Rssi)
+
+coordinate=[(nodo[4], nodo[5]) for nodo in nodi]
+lats = [lat for lat, lon in coordinate]
+lons = [lon for lat, lon in coordinate]
 centerLat = (min(lats) + max(lats)) / 2
 centerLon = (min(lons) + max(lons)) / 2
-
-node_a=[45.5236, -122.6750]
-node_b=[37.7749, -122.4194]
 
 app.layout = dbc.Container([
     dbc.Row([
@@ -57,25 +83,25 @@ app.layout = dbc.Container([
                         ),
                     ]+
                     [
+                        dl.Polyline(
+                            id={"type": "link", "index": i},
+                            positions=[coordinate[n1-1], coordinate[n2-1]],
+                            color=str(colors[Rssi[i]]),
+                            weight=Mbps[i],
+                            opacity=0.5,
+                        )
+                        for i, (_, n1, n2, data, mbps, rssi) in enumerate(links)
+                    ]+
+                    [
                         dl.CircleMarker(
                             id={"type": "node-dot", "index": i},
-                            center=COORDINATES[i],
+                            center=coordinate[i],
                             fill=True,
                             color='blue',
                             fillOpacity=1,
                             radius=9, 
                         )
-                        for i in range(len(COORDINATES))
-                    ]+
-                    [
-                        dl.Polyline(
-                            id={"type": "link", "index": i},
-                            positions=[COORDINATES[n1-1], COORDINATES[n2-1]],
-                            color='red',
-                            weight=2,
-                            opacity=0.7,
-                        )
-                        for i, (n1, n2, mbps, rssi) in enumerate(LINKS)
+                        for i in range(len(coordinate))
                     ],
                         style={'width': '100%', 'height': '600px'}, className='align-self-center'
                 )
@@ -85,7 +111,7 @@ app.layout = dbc.Container([
         dbc.Col(id="clicked-node", width=5, children=[html.H2("Grafico prova")]),
         dbc.Col(width=1),
     ])
-], fluid=True)
+], fluid=True,)
 
 
 
@@ -116,7 +142,7 @@ def toggle_node(_, selected):
 )
 def paint_selected(selected):
     selected = set(selected or [])
-    colors = ["green" if i in selected else "blue" for i in range(len(COORDINATES))]
+    colors = ["green" if i in selected else "blue" for i in range(len(coordinate))]
     return colors, colors
 
 @callback(
@@ -130,7 +156,7 @@ def update_info(selected, _):
 
     if isinstance(trig, dict) and trig.get("type") == "link":
         i = trig["index"]
-        n1, n2, mbps, rssi = LINKS[i]
+        _, n1, n2, data, mbps, rssi = links[i]
         return f"Arco cliccato da {n1} a {n2} Mbps: {mbps} RSSI: {rssi}"
 
     return f"Nodi selezionati: {selected}"

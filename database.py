@@ -12,7 +12,7 @@ COORDINATES = [
     (42.004174, 12.675815)
 ]
 
-def setup_database(cursor):
+def setupDatabase(cursor):
 
     # NODI
     cursor.execute('''
@@ -85,11 +85,11 @@ def setup_database(cursor):
     ''')
 
     
-    print("database creato con successo")
+    # print("database creato con successo")
 
 
-def populate_database(cursor):
-    print("Riempimento database...")
+def populateDatabase(cursor):
+    # print("Riempimento database...")
     
     # Inserimento Nodi
     nodes_data = [
@@ -149,14 +149,14 @@ def populate_database(cursor):
         INSERT INTO Sensori (nodo, tipo_sensore, frequenza_polling) VALUES (?, ?, ?);
     ''', sensors_data)
     
-    print("database riempito")
+    # print("database riempito")
 
 
 def main():
 
     if os.path.exists(DB_FILE):
         os.remove(DB_FILE)
-        print(f"Database '{DB_FILE}' precedente rimosso.")
+        # print(f"Database '{DB_FILE}' precedente rimosso.")
 
     conn = None
     try:
@@ -165,12 +165,12 @@ def main():
         cursor = conn.cursor()
 
         # Esecuzione delle funzioni
-        setup_database(cursor)
-        populate_database(cursor)
+        setupDatabase(cursor)
+        populateDatabase(cursor)
 
         # Commit delle modifiche
         conn.commit()
-        print("Database creato e riempito")
+        # print("Database creato e riempito")
 
     except sqlite3.Error as e:
         print(f"Errore del database: {e}")
@@ -178,7 +178,7 @@ def main():
         # Chiusura della connessione
         if conn:
             conn.close()
-            print("Connessione al database chiusa.")
+            # print("Connessione al database chiusa.")
 
 
 if __name__ == '__main__':
