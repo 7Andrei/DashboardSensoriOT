@@ -27,18 +27,28 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 # ]
 
 links=query.getLinks()
-nodi=query.getNodi()
-# for link in links:
-    # print(link)
+
+#nodeID, name, ip, role, lat, long
+nodes=query.getNodi()
+
+#sensorID, nodeId, sensor type, timestamp, value
+#60=1h, 1440=1day, 44640=31days
+for node in nodes: 
+    readings=query.getRecentReadings(node[0], 44640)
+    print(readings)
+    print("-----------------------------")
+
+# for reading in readings:
+#     print(reading)
+
 
 maxMbps = max(link[4] for link in links)
 minMbps = min(link[4] for link in links)
 rangeMbpsOld = maxMbps - minMbps
-rangeMbpsNew = 12 - 2
 Mbps=[]
 for i in range(len(links)):
     oldValue = links[i][4]
-    newValue = int((((oldValue - minMbps) * rangeMbpsNew) / rangeMbpsOld) + 2)
+    newValue = int((((oldValue - minMbps) * 10) / rangeMbpsOld) + 2)
     Mbps.append(newValue)
 
 maxRssi = max(link[5] for link in links)
@@ -51,10 +61,8 @@ for i in range(len(links)):
     Rssi.append(newValue)
 
 colors= list(Color("red").range_to(Color("green"), 20))
-print(Mbps)
-print(Rssi)
 
-coordinate=[(nodo[4], nodo[5]) for nodo in nodi]
+coordinate=[(nodo[4], nodo[5]) for nodo in nodes]
 lats = [lat for lat, lon in coordinate]
 lons = [lon for lat, lon in coordinate]
 centerLat = (min(lats) + max(lats)) / 2
@@ -94,14 +102,14 @@ app.layout = dbc.Container([
                     ]+
                     [
                         dl.CircleMarker(
-                            id={"type": "node-dot", "index": i},
+                            id={"type": "node-dot", "index": id},
                             center=coordinate[i],
                             fill=True,
                             color='blue',
                             fillOpacity=1,
                             radius=9, 
                         )
-                        for i in range(len(coordinate))
+                        for i, (id, nome, ip, ruolo, lat, lon) in enumerate(nodes)
                     ],
                         style={'width': '100%', 'height': '600px'}, className='align-self-center'
                 )
@@ -158,8 +166,22 @@ def update_info(selected, _):
         i = trig["index"]
         _, n1, n2, data, mbps, rssi = links[i]
         return f"Arco cliccato da {n1} a {n2} Mbps: {mbps} RSSI: {rssi}"
+    
+    temperatures=[]
+    if not selected:
+        for node in nodes:
+            readings=query.getRecentReadings(node[0], 44640)
+            for reading in readings:
+                temperatures.append(reading[4])
+        avgTemp=sum(temperatures)/len(temperatures)
+        return f"Nessun nodo selezionato. Temperatura media: {avgTemp:.2f}°C"
 
-    return f"Nodi selezionati: {selected}"
+    for i in selected:
+        readings=query.getRecentReadings(i, 44640)
+        for reading in readings:
+            temperatures.append(reading[4])
+    avgTemp=sum(temperatures)/len(temperatures)
+    return f"Nodi selezionati: {selected} Temperatura media: {avgTemp:.2f}°C"
 
 
 

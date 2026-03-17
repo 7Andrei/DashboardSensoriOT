@@ -154,9 +154,14 @@ def populateDatabase(cursor):
 
 def main():
 
-    if os.path.exists(DB_FILE):
-        os.remove(DB_FILE)
-        # print(f"Database '{DB_FILE}' precedente rimosso.")
+    conn=sqlite3.connect(DB_FILE)
+    if conn==None:
+        setupDatabase(cursor)
+        populateDatabase(cursor)
+        return
+    # if os.path.exists(DB_FILE):
+    #     os.remove(DB_FILE)
+    #     # print(f"Database '{DB_FILE}' precedente rimosso.")
 
     conn = None
     try:
@@ -165,8 +170,6 @@ def main():
         cursor = conn.cursor()
 
         # Esecuzione delle funzioni
-        setupDatabase(cursor)
-        populateDatabase(cursor)
 
         # Commit delle modifiche
         conn.commit()
