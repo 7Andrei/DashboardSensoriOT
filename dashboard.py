@@ -1,5 +1,6 @@
 from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State
 from colour import Color
+import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import plotly.express as px
@@ -11,31 +12,18 @@ database.main()
 
 df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/gapminder_unfiltered.csv')
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-# COORDINATES = [
-#     (42.004697, 12.676136), (42.004556, 12.675926), (42.004445, 12.675719),
-#     (42.004297, 12.675600), (42.004482, 12.676131), (42.004378, 12.675967),
-#     (42.004322, 12.675866), (42.004375, 12.676197), (42.004243, 12.676047),
-#     (42.004174, 12.675815)
-# ]
-# LINKS = [
-#     (1, 2, 100.00, -45), (1, 5, 90.50, -50), (2, 3, 85.75, -55),
-#     (2, 6, 80.25, -60), (3, 4, 70.00, -62), (3, 7, 65.50, -65),
-#     (5, 6, 60.25, -68), (6, 7, 55.00, -70), (6, 9, 50.50, -72),
-#     (7, 10, 45.50, -75), (8, 9, 40.50, -78), (9, 10, 40.50, -80)
-# ]
+app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
 links=query.getLinks()
 
 #nodeID, name, ip, role, lat, long
 nodes=query.getNodi()
-
 #sensorID, nodeId, sensor type, timestamp, value
 #60=1h, 1440=1day, 44640=31days
+
 for node in nodes: 
-    readings=query.getRecentReadings(node[0], 44640)
-    print(readings)
+    readings=query.getRecentReadings(node[0], 44640, "temperature")
+    # print(readings)
     print("-----------------------------")
 
 # for reading in readings:
@@ -78,8 +66,10 @@ app.layout = dbc.Container([
                 dcc.Store(id="selected-nodes", data=[]),
                 dl.Map
                 (
-                    center=[centerLat, centerLon], 
-                    zoom=19,               
+                    # center=[centerLat, centerLon], 
+                    bounds=[[min(lats), min(lons)], [max(lats), max(lons)]],
+                    boundsOptions={"padding": [40, 40]},
+                    # zoom=19,               
                     maxZoom=30,
                     doubleClickZoom=False,            
                     children=[
@@ -92,13 +82,13 @@ app.layout = dbc.Container([
                     ]+
                     [
                         dl.Polyline(
-                            id={"type": "link", "index": i},
+                            id={"type": "link", "index": id},
                             positions=[coordinate[n1-1], coordinate[n2-1]],
                             color=str(colors[Rssi[i]]),
                             weight=Mbps[i],
                             opacity=0.5,
                         )
-                        for i, (_, n1, n2, data, mbps, rssi) in enumerate(links)
+                        for i, (id, n1, n2, data, mbps, rssi) in enumerate(links)
                     ]+
                     [
                         dl.CircleMarker(
@@ -111,15 +101,22 @@ app.layout = dbc.Container([
                         )
                         for i, (id, nome, ip, ruolo, lat, lon) in enumerate(nodes)
                     ],
-                        style={'width': '100%', 'height': '600px'}, className='align-self-center'
+                        style={'width': '100%', 'height': '600px'}, className='align-self-center rounded-4'
                 )
             ],
-            className='d-flex justify-content-center', width=5,
+            className='d-flex justify-content-center shadow-sm', width=5,
         ),
-        dbc.Col(id="clicked-node", width=5, children=[html.H2("Grafico prova")]),
+        dbc.Col(width=5, children=[
+            dbc.Row(id="clickedNodes", className='mb-4', children=[
+                
+            ]),
+            dcc.RadioItems(id="sensorType", 
+                           options=[{"label": "Temperature", "value": "temperature"}, {"label": "Humidity", "value": "humidity"}],
+                           value="temperature", inline=True, className='text-white text-center'),
+            ]),
         dbc.Col(width=1),
     ])
-], fluid=True,)
+], fluid=True, className='bg-dark text-white min-vh-100')
 
 
 
@@ -144,21 +141,12 @@ def toggle_node(_, selected):
     return selected
 
 @callback(
-    Output({"type": "node-dot", "index": ALL}, "color"),
-    Output({"type": "node-dot", "index": ALL}, "fillColor"),
-    Input("selected-nodes", "data"),
-)
-def paint_selected(selected):
-    selected = set(selected or [])
-    colors = ["green" if i in selected else "blue" for i in range(len(coordinate))]
-    return colors, colors
-
-@callback(
-    Output("clicked-node", "children"),
+    Output("clickedNodes", "children"),
     Input("selected-nodes", "data"),
     Input({"type": "link", "index": ALL}, "n_clicks"),
+    Input("sensorType", "value"),
 )
-def update_info(selected, _):
+def update_info(selected, _, sensorType):
     selected = selected or []
     trig = ctx.triggered_id
 
@@ -167,21 +155,24 @@ def update_info(selected, _):
         _, n1, n2, data, mbps, rssi = links[i]
         return f"Arco cliccato da {n1} a {n2} Mbps: {mbps} RSSI: {rssi}"
     
-    temperatures=[]
-    if not selected:
-        for node in nodes:
-            readings=query.getRecentReadings(node[0], 44640)
-            for reading in readings:
-                temperatures.append(reading[4])
-        avgTemp=sum(temperatures)/len(temperatures)
-        return f"Nessun nodo selezionato. Temperatura media: {avgTemp:.2f}°C"
+    if selected:
+        nodesToShow=selected
+    else:
+        nodesToShow=[node[0] for node in nodes]
+    
+    figure=go.Figure()
 
-    for i in selected:
-        readings=query.getRecentReadings(i, 44640)
-        for reading in readings:
-            temperatures.append(reading[4])
-    avgTemp=sum(temperatures)/len(temperatures)
-    return f"Nodi selezionati: {selected} Temperatura media: {avgTemp:.2f}°C"
+    for nodeId in nodesToShow:
+        results=query.getRecentReadings(nodeId, 44640, sensorType)
+        if results:
+            timestamps=[reading[3] for reading in results]
+            readings=[reading[4] for reading in results]
+            nodeName=next((node[1] for node in nodes if node[0]==nodeId), f"Node {nodeId}")
+
+            figure.add_trace(go.Scatter(x=timestamps, y=readings, mode='lines+markers', name=nodeName))
+    
+    figure.update_layout(template="plotly_dark", title=f"Recent {sensorType}", title_x=0.5, yaxis_title=f"{sensorType}")
+    return dcc.Graph(figure=figure)
 
 
 

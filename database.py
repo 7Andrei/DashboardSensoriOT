@@ -2,7 +2,7 @@ import sqlite3
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "dashboard.db")
+DB_FILE = os.path.join(BASE_DIR, "dashboard2.db")
 
 # Coordinate nodi
 COORDINATES = [
@@ -156,6 +156,7 @@ def main():
 
     conn=sqlite3.connect(DB_FILE)
     if conn==None:
+        print("Errore nella connessione al database")
         setupDatabase(cursor)
         populateDatabase(cursor)
         return
@@ -182,6 +183,7 @@ def main():
         if conn:
             conn.close()
             # print("Connessione al database chiusa.")
+
 
 
 if __name__ == '__main__':

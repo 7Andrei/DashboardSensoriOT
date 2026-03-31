@@ -2,7 +2,7 @@ import os
 import sqlite3
 
 dir = os.path.dirname(__file__)
-database = os.path.join(dir, "dashboard.db")
+database = os.path.join(dir, "dashboard2.db")
 
 def connessione():
     return sqlite3.connect(database)
@@ -23,7 +23,7 @@ def getLinks():
     conn.close()
     return links
 
-def getRecentReadings(node, interval):
+def getRecentReadings(node, interval, type):
     conn=connessione()
     cursor=conn.cursor()
 
@@ -36,12 +36,12 @@ def getRecentReadings(node, interval):
     "SELECT s.id, s.nodo, s.tipo_sensore, ls.timestamp, ls.valore " \
     "FROM letture_sensori ls " \
     "JOIN Sensori s ON(s.id=ls.sensore) " \
-    "WHERE s.tipo_sensore='temperature' AND timestamp>=datetime('now', ?) "
+    "WHERE s.tipo_sensore=? AND timestamp>=datetime('now', ?) "
     "AND s.nodo=? " \
-    "ORDER BY ls.timestamp ASC; ", (intervalStr, node,))
+    "ORDER BY ls.timestamp ASC; ", (type, intervalStr, node,))
     readings=cursor.fetchall()
 
-    cursor=conn.close
+    conn.close
     return readings
     
 
