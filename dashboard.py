@@ -9,25 +9,22 @@ import database
 import query
 
 database.main()
-
-df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/gapminder_unfiltered.csv')
-
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
+#linkId, node1, node2, timestamp, mbps, rssi
 links=query.getLinks()
 
 #nodeID, name, ip, role, lat, long
 nodes=query.getNodi()
+
 #sensorID, nodeId, sensor type, timestamp, value
 #60=1h, 1440=1day, 44640=31days
+# for node in nodes: 
+#     readings=query.getRecentReadings(node[0], 44640, "temperature")
+#     # print(readings)
+#     print("-----------------------------")
 
-for node in nodes: 
-    readings=query.getRecentReadings(node[0], 44640, "temperature")
-    # print(readings)
-    print("-----------------------------")
 
-# for reading in readings:
-#     print(reading)
 
 
 maxMbps = max(link[4] for link in links)
@@ -48,28 +45,35 @@ for i in range(len(links)):
     newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
     Rssi.append(newValue)
 
-colors= list(Color("red").range_to(Color("green"), 20))
+linksColors= list(Color("red").range_to(Color("green"), 20))
+nodesColors={"Router":"red", "Child": "green", "Parent": "blue"}
 
 coordinate=[(nodo[4], nodo[5]) for nodo in nodes]
 lats = [lat for lat, lon in coordinate]
 lons = [lon for lat, lon in coordinate]
-centerLat = (min(lats) + max(lats)) / 2
-centerLon = (min(lons) + max(lons)) / 2
 
 app.layout = dbc.Container([
+    dcc.Store(id="linksData", data=links),
+    dcc.Store(id="nodesData", data=nodes),
+
+    #title row
     dbc.Row([
         dbc.Col(html.H1("Dashboard prova", className='text-center text-primary mb-4'), width=12)]),
+
+    #main row
     dbc.Row([
-        dbc.Col(width=1),
+
+        # #spacer col
+        # dbc.Col(width=1),
+
+        #map col
         dbc.Col(
             children=[
                 dcc.Store(id="selected-nodes", data=[]),
                 dl.Map
                 (
-                    # center=[centerLat, centerLon], 
                     bounds=[[min(lats), min(lons)], [max(lats), max(lons)]],
                     boundsOptions={"padding": [40, 40]},
-                    # zoom=19,               
                     maxZoom=30,
                     doubleClickZoom=False,            
                     children=[
@@ -84,7 +88,7 @@ app.layout = dbc.Container([
                         dl.Polyline(
                             id={"type": "link", "index": id},
                             positions=[coordinate[n1-1], coordinate[n2-1]],
-                            color=str(colors[Rssi[i]]),
+                            color=str(linksColors[Rssi[i]]),
                             weight=Mbps[i],
                             opacity=0.5,
                         )
@@ -95,26 +99,68 @@ app.layout = dbc.Container([
                             id={"type": "node-dot", "index": id},
                             center=coordinate[i],
                             fill=True,
-                            color='blue',
+                            color=nodesColors[ruolo],
                             fillOpacity=1,
                             radius=9, 
                         )
                         for i, (id, nome, ip, ruolo, lat, lon) in enumerate(nodes)
                     ],
-                        style={'width': '100%', 'height': '600px'}, className='align-self-center rounded-4'
+                        style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4'
                 )
             ],
-            className='d-flex justify-content-center shadow-sm', width=5,
+            className='d-flex justify-content-center shadow-sm ms-4', width=5,
         ),
+
+        #graph col
         dbc.Col(width=5, children=[
+
+            #title and instructions
+            dbc.Row([
+
+                dbc.Col([
+                    html.H3("Statistics", className='text-start text-primary'),
+                    html.P("Click on a node or link for more details", className='text-start text-secondary'),
+                ], width=6),
+
+                dbc.Col([
+                    dbc.RadioItems(
+                        id="sensorType", 
+                        options=[
+                            {"label": "Temperature", "value": "temperature"}, 
+                            {"label": "Humidity", "value": "humidity"}
+                        ],
+                        value="temperature", 
+                        inline=True, 
+                        className='btn-group-vertical'
+                    ),
+                ], width=3, className='d-flex justify-content-end'),
+
+                dbc.Col([
+                    dbc.RadioItems(
+                        id="graphTime", 
+                        options=[
+                            {"label": "1 Month", "value": 44640}, 
+                            {"label": "1 Week", "value": 10080}, 
+                            {"label": "1 Day", "value": 1440}, 
+                        ],
+                        value=10080, 
+                        inline=True, 
+                        className='btn-group-vertical'
+                    ),
+                ], width=3, className='d-flex justify-content-end'),
+
+            ], className='mb-4'),
+
+            #graph row
             dbc.Row(id="clickedNodes", className='mb-4', children=[
                 
             ]),
-            dcc.RadioItems(id="sensorType", 
-                           options=[{"label": "Temperature", "value": "temperature"}, {"label": "Humidity", "value": "humidity"}],
-                           value="temperature", inline=True, className='text-white text-center'),
-            ]),
-        dbc.Col(width=1),
+        ]),
+
+        #spacer col
+        dbc.Col([
+            html.H5("aaaaa")
+        ],width=1, className='bg-white d-flex'),
     ])
 ], fluid=True, className='bg-dark text-white min-vh-100')
 
@@ -145,8 +191,9 @@ def toggle_node(_, selected):
     Input("selected-nodes", "data"),
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("sensorType", "value"),
+    Input("graphTime", "value")
 )
-def update_info(selected, _, sensorType):
+def update_info(selected, _, sensorType, graphTime):
     selected = selected or []
     trig = ctx.triggered_id
 
@@ -163,7 +210,7 @@ def update_info(selected, _, sensorType):
     figure=go.Figure()
 
     for nodeId in nodesToShow:
-        results=query.getRecentReadings(nodeId, 44640, sensorType)
+        results=query.getRecentReadings(nodeId, graphTime, sensorType)
         if results:
             timestamps=[reading[3] for reading in results]
             readings=[reading[4] for reading in results]
