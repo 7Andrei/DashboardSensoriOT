@@ -9,7 +9,7 @@ import database
 import query
 
 database.main()
-app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 #linkId, node1, node2, timestamp, mbps, rssi
 links=query.getLinks()
@@ -69,7 +69,7 @@ app.layout = dbc.Container([
         #map col
         dbc.Col(
             children=[
-                dcc.Store(id="selected-nodes", data=[]),
+                dcc.Store(id="selectedNodes", data=[]),
                 dl.Map
                 (
                     bounds=[[min(lats), min(lons)], [max(lats), max(lons)]],
@@ -96,32 +96,66 @@ app.layout = dbc.Container([
                     ]+
                     [
                         dl.CircleMarker(
-                            id={"type": "node-dot", "index": id},
+                            id={"type": "nodeDot", "index": id},
                             center=coordinate[i],
                             fill=True,
                             color=nodesColors[ruolo],
-                            fillOpacity=1,
+                            pathOptions={"fillOpacity": 0.5},
+                            opacity=1,
+                            # fillOpacity=1,
                             radius=9, 
                         )
                         for i, (id, nome, ip, ruolo, lat, lon) in enumerate(nodes)
                     ],
-                        style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4'
-                )
+                        style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
+                ),
+
+                    # html.H3("Statistics", className='text-start text-primary'),
+                    html.P("Click on a node or link for more details", className='text-center text-secondary'),
+                
             ],
-            className='d-flex justify-content-center shadow-sm ms-4', width=5,
+            className='', width=5,
         ),
 
         #graph col
-        dbc.Col(width=5, children=[
+        dbc.Col([
+            dbc.Row([
+                dbc.Tabs(
+                    id="contentTabs",
+                    active_tab="tabStats",
+                    children=[
+                        dbc.Tab(label="Statistics", tab_id="tabStats"),
+                        dbc.Tab(label="Node Info", tab_id="tabNode"),
+                        dbc.Tab(label="Settings", tab_id="tabSettings"),
+                    ],
+                )
+            ]),
+
+            dbc.Row(id="avgStats", children=[
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            html.H4("Avarage temperature", className="card-subtitle text-muted"),
+                            html.H4(id="avgTemp", children="-- °C", className="card-title text-danger"),
+                        ], className=" rounded-4 text-center")
+                    ])
+                ], width=6),
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            html.H4("Avarage humidity", className="card-subtitle text-muted"),
+                            html.H4(id="avgHum", children="-- %", className="card-title text-info"),
+                        ], className=" rounded-4 text-center")
+                    ])
+                ], width=6),
+            ]),
+
+            dbc.Row(id="clickedNodes", className='mb-4', children=[
+                #callback result
+            ]),
 
             #title and instructions
             dbc.Row([
-
-                dbc.Col([
-                    html.H3("Statistics", className='text-start text-primary'),
-                    html.P("Click on a node or link for more details", className='text-start text-secondary'),
-                ], width=6),
-
                 dbc.Col([
                     dbc.RadioItems(
                         id="sensorType", 
@@ -131,11 +165,8 @@ app.layout = dbc.Container([
                         ],
                         value="temperature", 
                         inline=True, 
-                        className='btn-group-vertical'
+                        className='btn-group rounded border px-2 py-1 me-3'
                     ),
-                ], width=3, className='d-flex justify-content-end'),
-
-                dbc.Col([
                     dbc.RadioItems(
                         id="graphTime", 
                         options=[
@@ -145,35 +176,25 @@ app.layout = dbc.Container([
                         ],
                         value=10080, 
                         inline=True, 
-                        className='btn-group-vertical'
+                        className='btn-group rounded border px-2 py-1'
                     ),
-                ], width=3, className='d-flex justify-content-end'),
+                ], width=12,),
+            ], id='controlRow'),
+        ], width=7, className='rounded-4'),
 
-            ], className='mb-4'),
-
-            #graph row
-            dbc.Row(id="clickedNodes", className='mb-4', children=[
-                
-            ]),
-        ]),
-
-        #spacer col
-        dbc.Col([
-            html.H5("aaaaa")
-        ],width=1, className='bg-white d-flex'),
     ])
-], fluid=True, className='bg-dark text-white min-vh-100')
+], fluid=True, className='')
 
 
 
 
 @callback(
-    Output("selected-nodes", "data"),
-    Input({"type": "node-dot", "index": ALL}, "n_clicks"),
-    State("selected-nodes", "data"),
+    Output("selectedNodes", "data"),
+    Input({"type": "nodeDot", "index": ALL}, "n_clicks"),
+    State("selectedNodes", "data"),
     prevent_initial_call=True,
 )
-def toggle_node(_, selected):
+def toggleNode(_, selected):
     selected = selected or []
     trig = ctx.triggered_id
     if not trig:
@@ -187,13 +208,35 @@ def toggle_node(_, selected):
     return selected
 
 @callback(
+    Output({"type": "nodeDot","index": ALL}, "pathOptions"),
+    Input("selectedNodes", "data"),
+)
+def updateNodeOpacity(selected):
+    selected = selected or []
+    if not selected:
+        return [{"fillOpacity": 1} for _ in nodes]
+
+    return [{"fillOpacity": 1} if node[0] in selected else {"fillOpacity": 0.2} for node in nodes]
+    
+
+@callback(
+        Output("controlRow", "style"),
+        Input("contentTabs", "active_tab")
+)
+def toggleControls(activeTab):
+    if activeTab=="tabStats":
+        return {"display": "block"}
+    return {"display": "none"}
+
+@callback(
     Output("clickedNodes", "children"),
-    Input("selected-nodes", "data"),
+    Input("selectedNodes", "data"),
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("sensorType", "value"),
-    Input("graphTime", "value")
+    Input("graphTime", "value"),
+    Input("contentTabs", "active_tab")
 )
-def update_info(selected, _, sensorType, graphTime):
+def updateInfo(selected, _, sensorType, graphTime, activeTab):
     selected = selected or []
     trig = ctx.triggered_id
 
@@ -207,21 +250,51 @@ def update_info(selected, _, sensorType, graphTime):
     else:
         nodesToShow=[node[0] for node in nodes]
     
-    figure=go.Figure()
+    if activeTab=="tabStats":
 
-    for nodeId in nodesToShow:
-        results=query.getRecentReadings(nodeId, graphTime, sensorType)
-        if results:
-            timestamps=[reading[3] for reading in results]
-            readings=[reading[4] for reading in results]
-            nodeName=next((node[1] for node in nodes if node[0]==nodeId), f"Node {nodeId}")
+        figure=go.Figure()
 
-            figure.add_trace(go.Scatter(x=timestamps, y=readings, mode='lines+markers', name=nodeName))
-    
-    figure.update_layout(template="plotly_dark", title=f"Recent {sensorType}", title_x=0.5, yaxis_title=f"{sensorType}")
-    return dcc.Graph(figure=figure)
+        for nodeId in nodesToShow:
+            results=query.getRecentReadings(nodeId, graphTime, sensorType)
+            if results:
+                timestamps=[reading[3] for reading in results]
+                readings=[reading[4] for reading in results]
+                nodeName=next((node[1] for node in nodes if node[0]==nodeId), f"Node {nodeId}")
 
+                figure.add_trace(go.Scatter(x=timestamps, y=readings, mode='lines+markers', name=nodeName))
+        
+        figure.update_layout(template="plotly_white", title=f"Recent {sensorType}", title_x=0.5, yaxis_title=f"{sensorType}")
+        return dcc.Graph(figure=figure)
 
+@callback(
+    Output("avgTemp", "children"),
+    Output("avgHum", "children"),
+    Input("contentTabs", "active_tab"),
+    Input("graphTime", "value"),
+    Input("selectedNodes", "data")
+)
+def updateAvgStats(activeTab, graphTime, selected):
+    if activeTab=="tabStats":
+        selected = selected or []
+        if selected:
+            nodesToShow=selected
+        else:
+            nodesToShow=[node[0] for node in nodes]
+
+        allTemps=[]
+        allHums=[]
+
+        for nodeId in nodesToShow:
+            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature")
+            humResults=query.getRecentReadings(nodeId, graphTime, "humidity")
+
+            allTemps.extend([reading[4] for reading in tempResults])
+            allHums.extend([reading[4] for reading in humResults])
+
+        avgTemp = round(sum(allTemps) / len(allTemps), 2) if allTemps else "--"
+        avgHum = round(sum(allHums) / len(allHums), 2) if allHums else "--"
+
+        return f"{avgTemp} °C", f"{avgHum} %"
 
 
 
