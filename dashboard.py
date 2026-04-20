@@ -221,12 +221,13 @@ def updateNodeOpacity(selected):
 
 @callback(
         Output("controlRow", "style"),
+        Output("avgStats", "style"),
         Input("contentTabs", "active_tab")
 )
 def toggleControls(activeTab):
     if activeTab=="tabStats":
-        return {"display": "block"}
-    return {"display": "none"}
+        return {"display": "block"}, {"display": "flex"}
+    return {"display": "none"}, {"display": "none"}
 
 @callback(
     Output("clickedNodes", "children"),
@@ -265,6 +266,23 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
         
         figure.update_layout(template="plotly_white", title=f"Recent {sensorType}", title_x=0.5, yaxis_title=f"{sensorType}")
         return dcc.Graph(figure=figure)
+    elif activeTab=="tabNode":
+        if not selected or len(selected)>1:
+            return dbc.Alert("No node or too many nodes selected", color="warning", className="text-center")
+        else:
+            nodeInfo=next((node for node in nodes if node[0]==selected[0]), None)
+            if nodeInfo:
+                id, name, ip, role, lat, lon = nodeInfo
+                return html.Div([
+                    html.H4(f"{name}", className="text-primary"),
+                    html.P(f"ID: {id}"),
+                    html.P(f"IP: {ip}"),
+                    html.P(f"Role: {role}"),
+                    html.P(f"Location: ({lat}, {lon})"),
+                ], className="p-3 border rounded-4 shadow")
+            else:
+                return dbc.Alert("Node not found", color="danger", className="text-center")
+
 
 @callback(
     Output("avgTemp", "children"),
@@ -295,6 +313,7 @@ def updateAvgStats(activeTab, graphTime, selected):
         avgHum = round(sum(allHums) / len(allHums), 2) if allHums else "--"
 
         return f"{avgTemp} °C", f"{avgHum} %"
+    return "-- °C", "-- %"
 
 
 
