@@ -10,7 +10,6 @@ import query
 
 database.main()
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
 #linkId, node1, node2, timestamp, mbps, rssi
 links=query.getLinks()
 
@@ -191,15 +190,17 @@ app.layout = dbc.Container([
 @callback(
     Output("selectedNodes", "data"),
     Input({"type": "nodeDot", "index": ALL}, "n_clicks"),
+    Input({"type": "link", "index": ALL}, "n_clicks"),
     State("selectedNodes", "data"),
     prevent_initial_call=True,
 )
-def toggleNode(_, selected):
+def toggleNode(_nodeClick, _linkClick, selected):
     selected = selected or []
     trig = ctx.triggered_id
     if not trig:
         return selected
-
+    if isinstance(trig, dict) and trig.get("type") == "link":
+        return []
     i = trig["index"]
     if i in selected:
         selected.remove(i)   
@@ -240,11 +241,9 @@ def toggleControls(activeTab):
 def updateInfo(selected, _, sensorType, graphTime, activeTab):
     selected = selected or []
     trig = ctx.triggered_id
-
+    linkId=-1
     if isinstance(trig, dict) and trig.get("type") == "link":
-        i = trig["index"]
-        _, n1, n2, data, mbps, rssi = links[i]
-        return f"Arco cliccato da {n1} a {n2} Mbps: {mbps} RSSI: {rssi}"
+        linkId = trig["index"]
     
     if selected:
         nodesToShow=selected
@@ -267,19 +266,88 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
         figure.update_layout(template="plotly_white", title=f"Recent {sensorType}", title_x=0.5, yaxis_title=f"{sensorType}")
         return dcc.Graph(figure=figure)
     elif activeTab=="tabNode":
-        if not selected or len(selected)>1:
+        if linkId != -1:
+            linkData = next((link for link in links if link[0] == linkId), None)
+            if not linkData:
+                return dbc.Alert("Error retriving link data", color="danger")
+            
+            _, srcId, dstId, timestamp, mbps, rssi = linkData
+            srcNode = next((n for n in nodes if n[0] == srcId), None)
+            dstNode = next((n for n in nodes if n[0] == dstId), None)
+            
+            linkRow=dbc.Row([
+                #source node col
+                dbc.Col(html.Div([
+                    html.H5(srcNode[1], className="text-success mb-0"),
+                    html.Small("Source", className="text-muted")
+                ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
+
+                #data col
+                dbc.Col(html.Div([
+                    html.Div(f"Speed: {mbps} Mbps", className="text-success fw-bold"),
+                    html.Div(f"Strenght: {rssi} dBm", className="text-warning fw-bold")
+                ], className="text-center d-flex flex-column justify-content-center h-100"), width=4),
+
+                #destination node col
+                dbc.Col(html.Div([
+                    html.H5(dstNode[1], className="text-info mb-0"),
+                    html.Small("Destinazione", className="text-muted")
+                ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
+            ])
+            linkTable=html.Div(
+                dbc.Table([
+                    html.Tbody([
+                        html.Tr([html.Th("Timestamp", className="w-50"), html.Td(timestamp)]),
+                        html.Tr([html.Th("Link ID"), html.Td(linkId)]),
+                    ])
+                ], bordered=False, hover=True, striped=True, className="mb-0"),
+                className="mt-3 shadow rounded-4 overflow-hidden border"
+            )
+
+            return html.Div([
+                html.H4("Dettagli Collegamento", className="text-center text-primary mb-4"),
+                linkRow,
+                linkTable
+            ])
+        elif not selected or len(selected)>1:
             return dbc.Alert("No node or too many nodes selected", color="warning", className="text-center")
         else:
             nodeInfo=next((node for node in nodes if node[0]==selected[0]), None)
             if nodeInfo:
                 id, name, ip, role, lat, lon = nodeInfo
+
+
+                nodeTable=dbc.Table([
+                    html.Tbody([
+                        html.Tr([html.Td("ID"), html.Td(f"{id}")]),
+                        html.Tr([html.Td("Name"), html.Td(f"{name}")]),
+                        html.Tr([html.Td("IP"), html.Td(f"{ip}")]),
+                        html.Tr([html.Td("Role"), html.Td(f"{role}")]),
+                        html.Tr([html.Td("Location"), html.Td(f"({lat}, {lon})")]),
+                    ])
+                ], bordered=True, hover=True, striped=True, className="mt-3 shadow rounded-4")
+
+                recentEvents=query.getRecentEvents(id, 10)
+                if recentEvents:
+                    events=[
+                        html.Tr([
+                            html.Td(event[2]),
+                            html.Td(event[3]),
+                            html.Td(event[4]),
+                        ]) for event in recentEvents
+                    ]
+                    eventTable=dbc.Table([
+                        html.Thead(html.Tr([html.Th("Type"), html.Th("Description"), html.Th("Timestamp")])),
+                        html.Tbody(events)
+                    ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
+
+
                 return html.Div([
-                    html.H4(f"{name}", className="text-primary"),
-                    html.P(f"ID: {id}"),
-                    html.P(f"IP: {ip}"),
-                    html.P(f"Role: {role}"),
-                    html.P(f"Location: ({lat}, {lon})"),
-                ], className="p-3 border rounded-4 shadow")
+                    html.H4(f"{name} details", className="text-center text-primary"),
+                    nodeTable,
+                    html.H5("Recent events", className="text-center text-secondary mt-4"),
+                    eventTable
+                ])
             else:
                 return dbc.Alert("Node not found", color="danger", className="text-center")
 

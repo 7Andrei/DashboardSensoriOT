@@ -52,11 +52,12 @@ def getRecentEvents(node, num):
     events=[]
     cursor.execute("" \
     "SELECT id, nodo, tipo_evento, descrizione, timestamp, nodo_sorgente " \
-    "FROM Eventi" \
-    "WHERE nodo=?" \
+    "FROM Eventi " \
+    "WHERE nodo=? " \
+    "ORDER BY timestamp DESC " \
     "LIMIT ?;", (node, num))    
     events=cursor.fetchall()
-    conn.close
+    conn.close()
     return events
 
 def main():
