@@ -109,8 +109,8 @@ app.layout = dbc.Container([
                         style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
                 ),
 
-                    # html.H3("Statistics", className='text-start text-primary'),
                     html.P("Click on a node or link for more details", className='text-center text-secondary'),
+                    dbc.Button("Reset Selection", id="reset", color="secondary", className="text-start")
                 
             ],
             className='', width=5,
@@ -191,14 +191,17 @@ app.layout = dbc.Container([
     Output("selectedNodes", "data"),
     Input({"type": "nodeDot", "index": ALL}, "n_clicks"),
     Input({"type": "link", "index": ALL}, "n_clicks"),
+    Input("reset", "n_clicks"),
     State("selectedNodes", "data"),
     prevent_initial_call=True,
 )
-def toggleNode(_nodeClick, _linkClick, selected):
+def toggleNode(_nodeClick, _linkClick, _resetClick, selected):
     selected = selected or []
     trig = ctx.triggered_id
     if not trig:
         return selected
+    if trig == "reset":
+        return []
     if isinstance(trig, dict) and trig.get("type") == "link":
         return []
     i = trig["index"]
@@ -291,7 +294,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                 #destination node col
                 dbc.Col(html.Div([
                     html.H5(dstNode[1], className="text-info mb-0"),
-                    html.Small("Destinazione", className="text-muted")
+                    html.Small("Destination", className="text-muted")
                 ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
             ])
             linkTable=html.Div(
@@ -309,8 +312,25 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                 linkRow,
                 linkTable
             ])
-        elif not selected or len(selected)>1:
+        elif not selected:
             return dbc.Alert("No node or too many nodes selected", color="warning", className="text-center")
+        elif len(selected)>1:
+            nodeTable=dbc.Table([
+                html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("IP"), html.Th("Role"), html.Th("Location")])),
+                html.Tbody([
+                    html.Tr([
+                        html.Td(node[0]),
+                        html.Td(node[1]),
+                        html.Td(node[2]),
+                        html.Td(node[3]),
+                        html.Td(f"({node[4]}, {node[5]})"),
+                    ]) for node in nodes if node[0] in selected
+                ])
+            ], bordered=True, hover=True, striped=True, className="mt-3 rounded-4")
+            return html.Div([
+                html.H4("Selected nodes", className="text-center text-primary mt-4"),
+                nodeTable
+            ])
         else:
             nodeInfo=next((node for node in nodes if node[0]==selected[0]), None)
             if nodeInfo:
@@ -327,6 +347,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                     ])
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow rounded-4")
 
+                eventTable=html.Div("No recent events", className="text-center text-muted mt-3")
                 recentEvents=query.getRecentEvents(id, 10)
                 if recentEvents:
                     events=[
@@ -340,13 +361,31 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                         html.Thead(html.Tr([html.Th("Type"), html.Th("Description"), html.Th("Timestamp")])),
                         html.Tbody(events)
                     ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
-
+                nodeLinks=[]
+                for nodeLink in links:
+                    if nodeLink[1]==id or nodeLink[2]==id:
+                        nodeLinks.append(
+                            html.Tr([
+                                html.Td(nodeLink[0]),
+                                html.Td(nodeLink[1] if nodeLink[1]==id else nodeLink[2]),
+                                html.Td(nodeLink[2] if nodeLink[2]!=id else nodeLink[1]),
+                                html.Td(nodeLink[3]),
+                                html.Td(nodeLink[4]),
+                                html.Td(nodeLink[5]),
+                            ])
+                        )
+                nodeLinksTable=dbc.Table([
+                    html.Thead(html.Tr([html.Th("Link ID"), html.Th("Source node"), html.Th("Destination node"), html.Th("Timestamp"), html.Th("Mbps"), html.Th("Rssi")])),
+                    html.Tbody(nodeLinks)
+                ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
 
                 return html.Div([
-                    html.H4(f"{name} details", className="text-center text-primary"),
+                    html.H4(f"{name} details", className="text-center text-primary mt-4"),
                     nodeTable,
                     html.H5("Recent events", className="text-center text-secondary mt-4"),
-                    eventTable
+                    eventTable,
+                    html.H5("Related links", className="text-center text-secondary mt-4"),
+                    nodeLinksTable
                 ])
             else:
                 return dbc.Alert("Node not found", color="danger", className="text-center")
