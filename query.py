@@ -60,6 +60,13 @@ def getRecentEvents(node, num):
     conn.close()
     return events
 
+def updateNodePosition(nodeId, lat, lon):
+    conn=connessione()
+    cursor=conn.cursor()
+    cursor.execute("UPDATE Nodi SET latitudine=?, longitudine=? WHERE id=?;", (lat, lon, nodeId,))
+    conn.commit()
+    conn.close()
+
 def main():
     nodi = getNodi()
     for nodo in nodi:
