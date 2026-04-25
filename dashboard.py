@@ -1,4 +1,5 @@
-from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State
+from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State, no_update
+from dash.exceptions import PreventUpdate
 from colour import Color
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
@@ -51,7 +52,16 @@ coordinate=[(nodo[4], nodo[5]) for nodo in nodes]
 lats = [lat for lat, lon in coordinate]
 lons = [lon for lat, lon in coordinate]
 
-app.layout = dbc.Container([
+
+def buildLayout():
+    links=query.getLinks()
+    nodes=query.getNodi()
+
+    coordinates=[(nodo[4], nodo[5]) for nodo in nodes]
+    lats = [lat for lat, lon in coordinates]
+    lons = [lon for lat, lon in coordinates]
+
+    return dbc.Container([
     dcc.Store(id="linksData", data=links),
     dcc.Store(id="nodesData", data=nodes),
 
@@ -69,8 +79,10 @@ app.layout = dbc.Container([
         dbc.Col(
             children=[
                 dcc.Store(id="selectedNodes", data=[]),
+                dcc.Store(id="allowMove", data=False),
                 dl.Map
                 (
+                    id="nodeMap",
                     bounds=[[min(lats), min(lons)], [max(lats), max(lons)]],
                     boundsOptions={"padding": [40, 40]},
                     maxZoom=30,
@@ -86,7 +98,7 @@ app.layout = dbc.Container([
                     [
                         dl.Polyline(
                             id={"type": "link", "index": id},
-                            positions=[coordinate[n1-1], coordinate[n2-1]],
+                            positions=[coordinates[n1-1], coordinates[n2-1]],
                             color=str(linksColors[Rssi[i]]),
                             weight=Mbps[i],
                             opacity=0.5,
@@ -96,7 +108,7 @@ app.layout = dbc.Container([
                     [
                         dl.CircleMarker(
                             id={"type": "nodeDot", "index": id},
-                            center=coordinate[i],
+                            center=coordinates[i],
                             fill=True,
                             color=nodesColors[ruolo],
                             pathOptions={"fillOpacity": 0.5},
@@ -110,7 +122,8 @@ app.layout = dbc.Container([
                 ),
 
                     html.P("Click on a node or link for more details", className='text-center text-secondary'),
-                    dbc.Button("Reset Selection", id="reset", color="secondary", className="text-start")
+                    dbc.Button("Reset Selection", id="reset", color="secondary", className="text-start"),
+                    dbc.Button("Move node", id="moveNode", color="warning", className="text-end ms-3", n_clicks=0)
                 
             ],
             className='', width=5,
@@ -184,6 +197,7 @@ app.layout = dbc.Container([
     ])
 ], fluid=True, className='')
 
+app.layout = buildLayout
 
 
 
@@ -214,13 +228,14 @@ def toggleNode(_nodeClick, _linkClick, _resetClick, selected):
 @callback(
     Output({"type": "nodeDot","index": ALL}, "pathOptions"),
     Input("selectedNodes", "data"),
+    State("nodesData", "data")
 )
-def updateNodeOpacity(selected):
+def updateNodeOpacity(selected, nodesData):
     selected = selected or []
     if not selected:
-        return [{"fillOpacity": 1} for _ in nodes]
+        return [{"fillOpacity": 1} for _ in nodesData]
 
-    return [{"fillOpacity": 1} if node[0] in selected else {"fillOpacity": 0.2} for node in nodes]
+    return [{"fillOpacity": 1} if node[0] in selected else {"fillOpacity": 0.2} for node in nodesData]
     
 
 @callback(
@@ -239,9 +254,11 @@ def toggleControls(activeTab):
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("sensorType", "value"),
     Input("graphTime", "value"),
-    Input("contentTabs", "active_tab")
+    Input("contentTabs", "active_tab"),
+    Input("nodesData", "data"),
+    Input("linksData", "data")
 )
-def updateInfo(selected, _, sensorType, graphTime, activeTab):
+def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksData):
     selected = selected or []
     trig = ctx.triggered_id
     linkId=-1
@@ -251,7 +268,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
     if selected:
         nodesToShow=selected
     else:
-        nodesToShow=[node[0] for node in nodes]
+        nodesToShow=[node[0] for node in nodesData]
     
     if activeTab=="tabStats":
 
@@ -262,7 +279,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
             if results:
                 timestamps=[reading[3] for reading in results]
                 readings=[reading[4] for reading in results]
-                nodeName=next((node[1] for node in nodes if node[0]==nodeId), f"Node {nodeId}")
+                nodeName=next((node[1] for node in nodesData if node[0]==nodeId), f"Node {nodeId}")
 
                 figure.add_trace(go.Scatter(x=timestamps, y=readings, mode='lines+markers', name=nodeName))
         
@@ -270,13 +287,13 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
         return dcc.Graph(figure=figure)
     elif activeTab=="tabNode":
         if linkId != -1:
-            linkData = next((link for link in links if link[0] == linkId), None)
+            linkData = next((link for link in linksData if link[0] == linkId), None)
             if not linkData:
                 return dbc.Alert("Error retriving link data", color="danger")
             
             _, srcId, dstId, timestamp, mbps, rssi = linkData
-            srcNode = next((n for n in nodes if n[0] == srcId), None)
-            dstNode = next((n for n in nodes if n[0] == dstId), None)
+            srcNode = next((n for n in nodesData if n[0] == srcId), None)
+            dstNode = next((n for n in nodesData if n[0] == dstId), None)
             
             linkRow=dbc.Row([
                 #source node col
@@ -324,7 +341,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                         html.Td(node[2]),
                         html.Td(node[3]),
                         html.Td(f"({node[4]}, {node[5]})"),
-                    ]) for node in nodes if node[0] in selected
+                    ]) for node in nodesData if node[0] in selected
                 ])
             ], bordered=True, hover=True, striped=True, className="mt-3 rounded-4")
             return html.Div([
@@ -332,7 +349,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                 nodeTable
             ])
         else:
-            nodeInfo=next((node for node in nodes if node[0]==selected[0]), None)
+            nodeInfo=next((node for node in nodesData if node[0]==selected[0]), None)
             if nodeInfo:
                 id, name, ip, role, lat, lon = nodeInfo
 
@@ -362,7 +379,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
                         html.Tbody(events)
                     ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
                 nodeLinks=[]
-                for nodeLink in links:
+                for nodeLink in linksData:
                     if nodeLink[1]==id or nodeLink[2]==id:
                         nodeLinks.append(
                             html.Tr([
@@ -396,15 +413,16 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab):
     Output("avgHum", "children"),
     Input("contentTabs", "active_tab"),
     Input("graphTime", "value"),
-    Input("selectedNodes", "data")
+    Input("selectedNodes", "data"),
+    State("nodesData", "data")
 )
-def updateAvgStats(activeTab, graphTime, selected):
+def updateAvgStats(activeTab, graphTime, selected, nodesData):
     if activeTab=="tabStats":
         selected = selected or []
         if selected:
             nodesToShow=selected
         else:
-            nodesToShow=[node[0] for node in nodes]
+            nodesToShow=[node[0] for node in nodesData]
 
         allTemps=[]
         allHums=[]
@@ -422,8 +440,64 @@ def updateAvgStats(activeTab, graphTime, selected):
         return f"{avgTemp} °C", f"{avgHum} %"
     return "-- °C", "-- %"
 
+@callback(
+    Output("nodesData", "data"),
+    Output({"type": "nodeDot", "index": ALL}, "center"),
+    Output({"type": "link", "index": ALL}, "positions"),
+    Output("allowMove", "data"),
+    Input("nodeMap", "clickData"),
+    State("nodesData", "data"),
+    State("linksData", "data"),
+    State("selectedNodes", "data"),
+    State("allowMove", "data"),
+    prevent_initial_call=True,
+)
+def moveNode(clickData, nodesData, linksData, selectedNodes, allowMove):
+    if not allowMove or not clickData or len(selectedNodes or [])!=1:
+        raise PreventUpdate
+    
+    nodeId=selectedNodes[0]
+    lat=clickData["latlng"]["lat"]
+    lon=clickData["latlng"]["lng"]
 
+    query.updateNodePosition(nodeId, lat, lon)
 
+    newNodes=[list(node) for node in nodesData]
+    for node in newNodes:
+        if node[0]==nodeId:
+            node[4]=lat
+            node[5]=lon
+            break
+
+    centers=[(node[4], node[5]) for node in newNodes]
+    nodePositions={node[0]:[node[4], node[5]] for node in newNodes}
+    newLinks=[[nodePositions[link[1]], nodePositions[link[2]]] for link in linksData]
+
+    return newNodes, centers, newLinks, False
+
+@callback(
+    Output("allowMove", "data", allow_duplicate=True),
+    Input("moveNode", "n_clicks"),
+    Input("reset", "n_clicks"),
+    State("selectedNodes", "data"),
+    prevent_initial_call=True,
+)
+def allowMoveNode(_allow, _reset, selectedNodes):
+    trig=ctx.triggered_id
+    if trig=="reset":
+        return False
+    if len(selectedNodes or [])!=1:
+        return False
+    return True
+
+@callback(
+    Output("moveNode", "disabled"),
+    Input("selectedNodes", "data")
+)
+def disableMove(selectedNodes):
+    if len(selectedNodes or [])!=1:
+        return True
+    return False
 
 
 
