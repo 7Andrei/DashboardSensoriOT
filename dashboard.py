@@ -298,7 +298,8 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
             linkRow=dbc.Row([
                 #source node col
                 dbc.Col(html.Div([
-                    html.H5(srcNode[1], className="text-success mb-0"),
+                    # html.H5(srcNode[1], className="text-success mb-0"),
+                    dbc.Button(srcNode[1], id={"type": "nodeButton", "index": srcId}, color="success", className="mb-0 text-decoration-none"),
                     html.Small("Source", className="text-muted")
                 ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
 
@@ -310,7 +311,8 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
 
                 #destination node col
                 dbc.Col(html.Div([
-                    html.H5(dstNode[1], className="text-info mb-0"),
+                    # html.H5(dstNode[1], className="text-info mb-0"),
+                    dbc.Button(dstNode[1], id={"type": "nodeButton", "index": dstId}, color="info", className="mb-0 text-decoration-none"),
                     html.Small("Destination", className="text-muted")
                 ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
             ])
@@ -380,6 +382,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                     ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
                 nodeLinks=[]
                 for nodeLink in linksData:
+                    # Modificare tabella per aggiungere pulsanti verso i nodi
                     if nodeLink[1]==id or nodeLink[2]==id:
                         nodeLinks.append(
                             html.Tr([
@@ -499,6 +502,21 @@ def disableMove(selectedNodes):
         return True
     return False
 
+@callback(
+    # fix duplicate
+    Output("selectedNodes", "data", allow_duplicate=True),
+    Output("contentTabs", "active_tab"),
+    Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
+    State("selectedNodes", "data"),
+    prevent_initial_call=True,
+)
+def nodeButtonClick(n_clicks, selectedNodes):
+    trig=ctx.triggered_id
+    if not trig or not isinstance(trig, dict):
+        raise PreventUpdate
+    
+    nodeId=trig["index"]
+    return [nodeId], "tabNode"
 
 
 if __name__ == '__main__':

@@ -43,7 +43,7 @@ def getRecentReadings(node, interval, type):
     "ORDER BY ls.timestamp ASC; ", (type, intervalStr, node,))
     readings=cursor.fetchall()
 
-    conn.close
+    conn.close()
     return readings
 
 def getRecentEvents(node, num):
