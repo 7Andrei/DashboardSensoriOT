@@ -8,14 +8,21 @@ import plotly.express as px
 import pandas as pd
 import database
 import query
+import time #non necessario
 
 database.main()
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 #linkId, node1, node2, timestamp, mbps, rssi
 links=query.getLinks()
 
+timestamp=int(time.time())
+links=[(id, src, dst, timestamp, avgRssi, avgQuality) for id, (src, dst, avgRssi, avgQuality) in enumerate(links)]
+
 #nodeID, name, ip, role, lat, long
-nodes=query.getNodi()
+# nodes=query.getNodi()
+nodes=query.getNodes()
+ip='192.168.1.1'
+nodes=[(id, name, ip, role, lat, lon) for (id, name, lat, lon, _polling, _sleepPolicy,  role, _timestamp, _version, _comment) in nodes]
 
 #sensorID, nodeId, sensor type, timestamp, value
 #60=1h, 1440=1day, 44640=31days
@@ -46,7 +53,7 @@ for i in range(len(links)):
     Rssi.append(newValue)
 
 linksColors= list(Color("red").range_to(Color("green"), 20))
-nodesColors={"Router":"red", "Child": "green", "Parent": "blue"}
+nodesColors={"leader":"red", "leaf": "green", "router": "blue"}
 
 coordinate=[(nodo[4], nodo[5]) for nodo in nodes]
 lats = [lat for lat, lon in coordinate]
@@ -54,12 +61,14 @@ lons = [lon for lat, lon in coordinate]
 
 
 def buildLayout():
-    links=query.getLinks()
-    nodes=query.getNodi()
+    # links=query.getLinks()
+    # nodes=query.getNodi()
+    # nodes=query.getNodes()
 
     coordinates=[(nodo[4], nodo[5]) for nodo in nodes]
     lats = [lat for lat, lon in coordinates]
     lons = [lon for lat, lon in coordinates]
+    nodePositions={node[0]: (node[4], node[5]) for node in nodes}
 
     return dbc.Container([
     dcc.Store(id="linksData", data=links),
@@ -98,7 +107,7 @@ def buildLayout():
                     [
                         dl.Polyline(
                             id={"type": "link", "index": id},
-                            positions=[coordinates[n1-1], coordinates[n2-1]],
+                            positions=[nodePositions[n1], nodePositions[n2]],
                             color=str(linksColors[Rssi[i]]),
                             weight=Mbps[i],
                             opacity=0.5,
@@ -298,9 +307,8 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
             linkRow=dbc.Row([
                 #source node col
                 dbc.Col(html.Div([
-                    # html.H5(srcNode[1], className="text-success mb-0"),
-                    dbc.Button(srcNode[1], id={"type": "nodeButton", "index": srcId}, color="success", className="mb-0 text-decoration-none"),
-                    html.Small("Source", className="text-muted")
+                    dbc.Button(srcNode[1], id={"type": "nodeButton", "index": srcId}, color="success", className="mb-0 text-center d-inline-block"),
+                    html.Small("Source", className="text-muted d-block")
                 ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
 
                 #data col
@@ -311,9 +319,8 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
 
                 #destination node col
                 dbc.Col(html.Div([
-                    # html.H5(dstNode[1], className="text-info mb-0"),
-                    dbc.Button(dstNode[1], id={"type": "nodeButton", "index": dstId}, color="info", className="mb-0 text-decoration-none"),
-                    html.Small("Destination", className="text-muted")
+                    dbc.Button(dstNode[1], id={"type": "nodeButton", "index": dstId}, color="info", className="mb-0 text-center d-inline-block"),
+                    html.Small("Destination", className="text-muted d-block")
                 ], className="text-center p-3 border rounded-4 shadow bg-light"), width=4),
             ])
             linkTable=html.Div(
@@ -382,7 +389,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                     ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
                 nodeLinks=[]
                 for nodeLink in linksData:
-                    # Modificare tabella per aggiungere pulsanti verso i nodi
+                    # TODO Modificare tabella per aggiungere pulsanti verso i nodi
                     if nodeLink[1]==id or nodeLink[2]==id:
                         nodeLinks.append(
                             html.Tr([
@@ -502,21 +509,21 @@ def disableMove(selectedNodes):
         return True
     return False
 
-@callback(
-    # fix duplicate
-    Output("selectedNodes", "data", allow_duplicate=True),
-    Output("contentTabs", "active_tab"),
-    Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
-    State("selectedNodes", "data"),
-    prevent_initial_call=True,
-)
-def nodeButtonClick(n_clicks, selectedNodes):
-    trig=ctx.triggered_id
-    if not trig or not isinstance(trig, dict):
-        raise PreventUpdate
+# @callback(
+#     # fix duplicate
+#     Output("selectedNodes", "data", allow_duplicate=True),
+#     Output("contentTabs", "active_tab"),
+#     Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
+#     State("selectedNodes", "data"),
+#     prevent_initial_call=True,
+# )
+# def nodeButtonClick(n_clicks, selectedNodes):
+#     trig=ctx.triggered_id
+#     if not trig or not isinstance(trig, dict):
+#         raise PreventUpdate
     
-    nodeId=trig["index"]
-    return [nodeId], "tabNode"
+#     nodeId=trig["index"]
+#     return [nodeId], "tabNode"
 
 
 if __name__ == '__main__':
