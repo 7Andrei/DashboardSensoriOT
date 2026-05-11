@@ -12,17 +12,14 @@ import time #non necessario
 
 database.main()
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-#linkId, node1, node2, timestamp, mbps, rssi
+#linkId, node1, node2, timestamp, mbps, rssi VECCHIO
+#linkId, scrNode, dstNode, avgRssi, avgQuality
 links=query.getLinks()
+links=[(id, *link) for id, link in enumerate(links)]
 
-timestamp=int(time.time())
-links=[(id, src, dst, timestamp, avgRssi, avgQuality) for id, (src, dst, avgRssi, avgQuality) in enumerate(links)]
-
-#nodeID, name, ip, role, lat, long
-# nodes=query.getNodi()
+#nodeID, name, ip, role, lat, long VECCHIO
+#nodeEUI, name, lat, lon, polling, sleepPolicy, role, timestamp, version, comment
 nodes=query.getNodes()
-ip='192.168.1.1'
-nodes=[(id, name, ip, role, lat, lon) for (id, name, lat, lon, _polling, _sleepPolicy,  role, _timestamp, _version, _comment) in nodes]
 
 #sensorID, nodeId, sensor type, timestamp, value
 #60=1h, 1440=1day, 44640=31days
@@ -43,21 +40,21 @@ for i in range(len(links)):
     newValue = int((((oldValue - minMbps) * 10) / rangeMbpsOld) + 2)
     Mbps.append(newValue)
 
-maxRssi = max(link[5] for link in links)
-minRssi = min(link[5] for link in links)
+maxRssi = max(link[3] for link in links)
+minRssi = min(link[3] for link in links)
 rangeRssiOld = maxRssi - minRssi
 Rssi=[]
 for i in range(len(links)):
-    oldValue = links[i][5]
+    oldValue = links[i][3]
     newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
     Rssi.append(newValue)
 
 linksColors= list(Color("red").range_to(Color("green"), 20))
 nodesColors={"leader":"red", "leaf": "green", "router": "blue"}
 
-coordinate=[(nodo[4], nodo[5]) for nodo in nodes]
-lats = [lat for lat, lon in coordinate]
-lons = [lon for lat, lon in coordinate]
+coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
+lats = [lat for lat, lon in coordinates]
+lons = [lon for lat, lon in coordinates]
 
 
 def buildLayout():
@@ -65,10 +62,10 @@ def buildLayout():
     # nodes=query.getNodi()
     # nodes=query.getNodes()
 
-    coordinates=[(nodo[4], nodo[5]) for nodo in nodes]
-    lats = [lat for lat, lon in coordinates]
-    lons = [lon for lat, lon in coordinates]
-    nodePositions={node[0]: (node[4], node[5]) for node in nodes}
+    # coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
+    # lats = [lat for lat, lon in coordinates]
+    # lons = [lon for lat, lon in coordinates]
+    nodePositions={node[0]: (node[2], node[3]) for node in nodes}
 
     return dbc.Container([
     dcc.Store(id="linksData", data=links),
@@ -112,20 +109,20 @@ def buildLayout():
                             weight=Mbps[i],
                             opacity=0.5,
                         )
-                        for i, (id, n1, n2, data, mbps, rssi) in enumerate(links)
+                        for i, (id, n1, n2, mbps, rssi) in enumerate(links)
                     ]+
                     [
                         dl.CircleMarker(
-                            id={"type": "nodeDot", "index": id},
+                            id={"type": "nodeDot", "index": eui},
                             center=coordinates[i],
                             fill=True,
-                            color=nodesColors[ruolo],
+                            color=nodesColors[role],
                             pathOptions={"fillOpacity": 0.5},
                             opacity=1,
                             # fillOpacity=1,
                             radius=9, 
                         )
-                        for i, (id, nome, ip, ruolo, lat, lon) in enumerate(nodes)
+                        for i, (eui, _label, _lat, _lon, _polling, _sleepPolicy, role, _created, _version, _comment) in enumerate(nodes)
                     ],
                         style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
                 ),
@@ -191,9 +188,9 @@ def buildLayout():
                     dbc.RadioItems(
                         id="graphTime", 
                         options=[
-                            {"label": "1 Month", "value": 44640}, 
-                            {"label": "1 Week", "value": 10080}, 
-                            {"label": "1 Day", "value": 1440}, 
+                            {"label": "1 Month", "value": 60*24*31}, 
+                            {"label": "1 Week", "value": 60*24*7}, 
+                            {"label": "1 Day", "value": 60*24}, 
                         ],
                         value=10080, 
                         inline=True, 
@@ -216,9 +213,10 @@ app.layout = buildLayout
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("reset", "n_clicks"),
     State("selectedNodes", "data"),
+    State("linksData", "data"),
     prevent_initial_call=True,
 )
-def toggleNode(_nodeClick, _linkClick, _resetClick, selected):
+def toggleNode(_nodeClick, _linkClick, _resetClick, selected, linksData):
     selected = selected or []
     trig = ctx.triggered_id
     if not trig:
@@ -226,7 +224,12 @@ def toggleNode(_nodeClick, _linkClick, _resetClick, selected):
     if trig == "reset":
         return []
     if isinstance(trig, dict) and trig.get("type") == "link":
-        return []
+        linkId = trig["index"]
+        link=next((link for link in linksData if link[0] == linkId), None)
+        if not link:
+            return []
+        _, srcId, dstId, _, _ = link
+        return [srcId, dstId]
     i = trig["index"]
     if i in selected:
         selected.remove(i)   
@@ -237,9 +240,10 @@ def toggleNode(_nodeClick, _linkClick, _resetClick, selected):
 @callback(
     Output({"type": "nodeDot","index": ALL}, "pathOptions"),
     Input("selectedNodes", "data"),
+    Input({"type": "link", "index": ALL}, "n_clicks"),
     State("nodesData", "data")
 )
-def updateNodeOpacity(selected, nodesData):
+def updateNodeOpacity(selected, _linkClicks, nodesData):
     selected = selected or []
     if not selected:
         return [{"fillOpacity": 1} for _ in nodesData]
@@ -286,7 +290,8 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
         for nodeId in nodesToShow:
             results=query.getRecentReadings(nodeId, graphTime, sensorType)
             if results:
-                timestamps=[reading[3] for reading in results]
+                # timestamps=[reading[3] for reading in results]
+                timestamps=pd.to_datetime([reading[3] for reading in results], unit='s')
                 readings=[reading[4] for reading in results]
                 nodeName=next((node[1] for node in nodesData if node[0]==nodeId), f"Node {nodeId}")
 
@@ -300,7 +305,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
             if not linkData:
                 return dbc.Alert("Error retriving link data", color="danger")
             
-            _, srcId, dstId, timestamp, mbps, rssi = linkData
+            linkId, srcId, dstId, mbps, rssi = linkData
             srcNode = next((n for n in nodesData if n[0] == srcId), None)
             dstNode = next((n for n in nodesData if n[0] == dstId), None)
             
@@ -326,7 +331,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
             linkTable=html.Div(
                 dbc.Table([
                     html.Tbody([
-                        html.Tr([html.Th("Timestamp", className="w-50"), html.Td(timestamp)]),
+                        # html.Tr([html.Th("Timestamp", className="w-50"), html.Td(timestamp)]),
                         html.Tr([html.Th("Link ID"), html.Td(linkId)]),
                     ])
                 ], bordered=False, hover=True, striped=True, className="mb-0"),
@@ -342,14 +347,18 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
             return dbc.Alert("No node or too many nodes selected", color="warning", className="text-center")
         elif len(selected)>1:
             nodeTable=dbc.Table([
-                html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("IP"), html.Th("Role"), html.Th("Location")])),
+                html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("Info"), html.Th("Role"), html.Th("Polling rate"), html.Th("Sleep policy"), html.Th("Firmware version"), html.Th("Created"), html.Th("Location")])),
                 html.Tbody([
                     html.Tr([
                         html.Td(node[0]),
                         html.Td(node[1]),
-                        html.Td(node[2]),
-                        html.Td(node[3]),
-                        html.Td(f"({node[4]}, {node[5]})"),
+                        html.Td(node[9]),
+                        html.Td(node[6]),
+                        html.Td(node[4]),
+                        html.Td(node[5]),
+                        html.Td(node[7]),
+                        html.Td(node[8]),
+                        html.Td(f"({node[2]}, {node[3]})"),
                     ]) for node in nodesData if node[0] in selected
                 ])
             ], bordered=True, hover=True, striped=True, className="mt-3 rounded-4")
@@ -360,21 +369,25 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
         else:
             nodeInfo=next((node for node in nodesData if node[0]==selected[0]), None)
             if nodeInfo:
-                id, name, ip, role, lat, lon = nodeInfo
+                eui, label, lat, lon, pollingRate, sleepPolicy, role, created, version, info = nodeInfo
 
 
                 nodeTable=dbc.Table([
                     html.Tbody([
-                        html.Tr([html.Td("ID"), html.Td(f"{id}")]),
-                        html.Tr([html.Td("Name"), html.Td(f"{name}")]),
-                        html.Tr([html.Td("IP"), html.Td(f"{ip}")]),
+                        html.Tr([html.Td("EUI"), html.Td(f"{eui}")]),
+                        html.Tr([html.Td("Name"), html.Td(f"{label}")]),
+                        html.Tr([html.Td("Info"), html.Td(f"{info}")]),
                         html.Tr([html.Td("Role"), html.Td(f"{role}")]),
-                        html.Tr([html.Td("Location"), html.Td(f"({lat}, {lon})")]),
+                        html.Tr([html.Td("Polling rate"), html.Td(f"{pollingRate}")]),
+                        html.Tr([html.Td("Sleep policy"), html.Td(f"{sleepPolicy}")]),
+                        html.Tr([html.Td("Firmware version"), html.Td(f"{version}")]),
+                        html.Tr([html.Td("Created at"), html.Td(f"{created}")]),
+                        html.Tr([html.Td("Location"), html.Td(f"({lat}, {lon})")])       
                     ])
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow rounded-4")
 
                 eventTable=html.Div("No recent events", className="text-center text-muted mt-3")
-                recentEvents=query.getRecentEvents(id, 10)
+                recentEvents=query.getRecentEvents(eui, 10)
                 if recentEvents:
                     events=[
                         html.Tr([
@@ -390,7 +403,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                 nodeLinks=[]
                 for nodeLink in linksData:
                     # TODO Modificare tabella per aggiungere pulsanti verso i nodi
-                    if nodeLink[1]==id or nodeLink[2]==id:
+                    if nodeLink[1]==eui or nodeLink[2]==eui:
                         nodeLinks.append(
                             html.Tr([
                                 html.Td(nodeLink[0]),
@@ -398,7 +411,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                                 html.Td(nodeLink[2] if nodeLink[2]!=id else nodeLink[1]),
                                 html.Td(nodeLink[3]),
                                 html.Td(nodeLink[4]),
-                                html.Td(nodeLink[5]),
+                                # html.Td(nodeLink[5]),
                             ])
                         )
                 nodeLinksTable=dbc.Table([
@@ -407,7 +420,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
 
                 return html.Div([
-                    html.H4(f"{name} details", className="text-center text-primary mt-4"),
+                    html.H4(f"{label} details", className="text-center text-primary mt-4"),
                     nodeTable,
                     html.H5("Recent events", className="text-center text-secondary mt-4"),
                     eventTable,
@@ -475,12 +488,12 @@ def moveNode(clickData, nodesData, linksData, selectedNodes, allowMove):
     newNodes=[list(node) for node in nodesData]
     for node in newNodes:
         if node[0]==nodeId:
-            node[4]=lat
-            node[5]=lon
+            node[2]=lat
+            node[3]=lon
             break
 
-    centers=[(node[4], node[5]) for node in newNodes]
-    nodePositions={node[0]:[node[4], node[5]] for node in newNodes}
+    centers=[(node[2], node[3]) for node in newNodes]
+    nodePositions={node[0]:[node[2], node[3]] for node in newNodes}
     newLinks=[[nodePositions[link[1]], nodePositions[link[2]]] for link in linksData]
 
     return newNodes, centers, newLinks, False
@@ -509,21 +522,24 @@ def disableMove(selectedNodes):
         return True
     return False
 
-# @callback(
-#     # fix duplicate
-#     Output("selectedNodes", "data", allow_duplicate=True),
-#     Output("contentTabs", "active_tab"),
-#     Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
-#     State("selectedNodes", "data"),
-#     prevent_initial_call=True,
-# )
-# def nodeButtonClick(n_clicks, selectedNodes):
-#     trig=ctx.triggered_id
-#     if not trig or not isinstance(trig, dict):
-#         raise PreventUpdate
+@callback(
+    # fix duplicate
+    Output("selectedNodes", "data", allow_duplicate=True),
+    Output("contentTabs", "active_tab"),
+    Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
+    State("selectedNodes", "data"),
+    prevent_initial_call=True,
+)
+def nodeButtonClick(n_clicks, selectedNodes):
+    if not n_clicks or not any(n_clicks):
+        raise PreventUpdate 
+
+    trig=ctx.triggered_id
+    if not trig or not isinstance(trig, dict):
+        raise PreventUpdate
     
-#     nodeId=trig["index"]
-#     return [nodeId], "tabNode"
+    nodeId=trig["index"]
+    return [nodeId], "tabNode"
 
 
 if __name__ == '__main__':

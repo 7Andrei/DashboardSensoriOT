@@ -1,6 +1,9 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
+import time
+import uuid
+import json
 
 dir = os.path.dirname(__file__)
 database = os.path.join(dir, "DBVero/data.db")
@@ -28,71 +31,42 @@ def getNodes():
     conn.close()
     return tmpNodes
 
-# def getNodi():
-#     conn=connessione()
-#     cursor=conn.cursor()
-#     cursor.execute("SELECT * FROM Nodi")
-#     nodi=cursor.fetchall()
-#     conn.close()
-#     return nodi
 
 def getLinks():
     conn=connessione()
     cursor=conn.cursor()
-    # cursor.execute("" \
-    # "SELECT ld.src_eui, ld.dst_eui, ld.timestamp, " \
-    # "MAX(CASE WHEN ld.metric_name = 'link_quality' THEN ld.value_num END) AS link_quality, " \
-    # "MAX(CASE WHEN ld.metric_name = 'rssi' THEN ld.value_num END) AS rssi " \
-    # "FROM link_diagnostic ld " \
-    # "JOIN (" \
-    # "SELECT src_eui, dst_eui, MAX(timestamp) as max_timestamp " \
-    # "FROM link_diagnostic " \
-    # "GROUP BY src_eui, dst_eui) last " \
-    # "ON ld.src_eui=last.src_eui " \
-    # "AND ld.dst_eui=last.dst_eui " \
-    # "AND ld.timestamp=last.max_timestamp " \
-    # "GROUP BY ld.src_eui, ld.dst_eui, ld.timestamp ;")
 
     cursor.execute("" \
-    "SELECT ld.src_eui, ld.dst_eui, " \
-    "AVG(CASE WHEN ld.metric_name='rssi' THEN ld.value_num END) as avg_rssi," \
+    "SELECT " \
+    "CASE WHEN ld.src_eui<dst_eui THEN ld.src_eui ELSE ld.dst_eui END as src, " \
+    "CASE WHEN ld.src_eui<dst_eui THEN ld.dst_eui ELSE ld.src_eui END as dst, " \
+    "AVG(CASE WHEN ld.metric_name='rssi' THEN ld.value_num END) as avg_rssi, " \
     "AVG(CASE WHEN ld.metric_name='link_quality' THEN ld.value_num END) as avg_quality " \
     "FROM link_diagnostic ld " \
-    "WHERE ld.timestamp>=(strftime('%s', 'now')-3600) " \
-    "GROUP BY ld.src_eui, ld.dst_eui")
+    "GROUP BY src, dst;")
 
     tmpLinks=cursor.fetchall()
     conn.close()
     return tmpLinks
 
-# def getLinks():
-#     conn=connessione()
-#     cursor=conn.cursor()
-#     cursor.execute("SELECT * FROM Links")
-#     links=cursor.fetchall()
-#     conn.close()
-#     return links
-
 def getRecentReadings(node, interval, type):
     conn=connessione()
     cursor=conn.cursor()
-
-    # intervalStr=f"-{interval} minutes"
-    intervalStr=(datetime.now()-timedelta(minutes=interval)).isoformat()
+    interval=time.time()-(interval*60)
     readings=[]
     #sensorID, nodeId, sensor type, timestamp, value
     #selects all ""temperature"" readings for each given node in the last interval minutes 
-    
-    cursor.execute("" \
-    "SELECT s.id, s.nodo, s.tipo_sensore, ls.timestamp, ls.valore " \
-    "FROM letture_sensori ls " \
-    "JOIN Sensori s ON(s.id=ls.sensore) " \
-    "WHERE s.tipo_sensore=? AND timestamp>=? "\
-    "AND s.nodo=? " \
-    "ORDER BY ls.timestamp ASC; ", (type, intervalStr, node,))
-    readings=cursor.fetchall()
-
-    conn.close()
+    if type=="temperature" or type=="humidity" or type=="pressure":
+        ftype=f"%{type}%"
+        cursor.execute("" \
+        "SELECT id, eui, ? AS sensor, " \
+        "datetime(CAST(timestamp/60 AS INTEGER)*60, 'unixepoch', 'localtime') AS bucket, " \
+        "AVG(sr.value) AS value " \
+        "FROM sensor_reading sr " \
+        "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.eui=? " \
+        "GROUP BY sr.eui, bucket", (type, ftype, interval, node,))
+        readings=cursor.fetchall()
+        conn.close()
     return readings
 
 def getRecentEvents(node, num):
@@ -100,37 +74,39 @@ def getRecentEvents(node, num):
     cursor=conn.cursor()
     events=[]
     cursor.execute("" \
-    "SELECT id, nodo, tipo_evento, descrizione, timestamp, nodo_sorgente " \
-    "FROM Eventi " \
-    "WHERE nodo=? " \
+    "SELECT id, eui, event_type, message, timestamp, severity " \
+    "FROM event " \
+    "WHERE eui=? " \
     "ORDER BY timestamp DESC " \
     "LIMIT ?;", (node, num))    
     events=cursor.fetchall()
     conn.close()
     return events
 
-def updateNodePosition(nodeId, lat, lon):
+def updateNodePosition(node, lat, lon):
+    payload=json.dumps(
+        {
+            "eui": node,
+            "latitude": lat,
+            "longitude": lon
+        }
+    ).encode("utf-8")
+    payloadUUID=str(uuid.uuid4())
+    timestamp=time.time()
+
     conn=connessione()
     cursor=conn.cursor()
-    cursor.execute("UPDATE Nodi SET latitudine=?, longitudine=? WHERE id=?;", (lat, lon, nodeId,))
+    cursor.execute("INSERT INTO data (uuid, timestamp, data) VALUES (?, ?, ?);", (payloadUUID, timestamp, sqlite3.Binary(payload,)))
+    dataId=cursor.lastrowid
+    cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "latitude", lat, dataId,))
+    cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "longitude", lon, dataId,))
     conn.commit()
     conn.close()
 
-def main():
-    # nodi = getNodi()
-    # for nodo in nodi:
-    #     print(nodo)
-
-    # links= getLinks()
-    # for link in links:
-    #     print(link)
-    nodes=getNodes()
-    links=getLinks()
-
-    for node in nodes:
-        print(node) 
-    # print(nodes)
+# def main():
+#     nodes=getNodes()
+#     links=getLinks()
 
 
-if __name__ == "__main__":    
-    main()
+# if __name__ == "__main__":    
+#     main()
