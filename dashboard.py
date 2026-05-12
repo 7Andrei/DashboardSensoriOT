@@ -1,6 +1,7 @@
 from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State, no_update
 from dash.exceptions import PreventUpdate
 from colour import Color
+from datetime import datetime
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
@@ -19,52 +20,49 @@ links=[(id, *link) for id, link in enumerate(links)]
 
 #nodeID, name, ip, role, lat, long VECCHIO
 #nodeEUI, name, lat, lon, polling, sleepPolicy, role, timestamp, version, comment
-nodes=query.getNodes()
 
 #sensorID, nodeId, sensor type, timestamp, value
 #60=1h, 1440=1day, 44640=31days
-# for node in nodes: 
-#     readings=query.getRecentReadings(node[0], 44640, "temperature")
-#     # print(readings)
-#     print("-----------------------------")
 
 
 
+def setColors(links):
+    maxMbps = max(link[4] for link in links)
+    minMbps = min(link[4] for link in links)
+    rangeMbpsOld = maxMbps - minMbps
+    Mbps=[]
+    for i in range(len(links)):
+        oldValue = links[i][4]
+        newValue = int((((oldValue - minMbps) * 10) / rangeMbpsOld) + 2)
+        Mbps.append(newValue)
 
-maxMbps = max(link[4] for link in links)
-minMbps = min(link[4] for link in links)
-rangeMbpsOld = maxMbps - minMbps
-Mbps=[]
-for i in range(len(links)):
-    oldValue = links[i][4]
-    newValue = int((((oldValue - minMbps) * 10) / rangeMbpsOld) + 2)
-    Mbps.append(newValue)
-
-maxRssi = max(link[3] for link in links)
-minRssi = min(link[3] for link in links)
-rangeRssiOld = maxRssi - minRssi
-Rssi=[]
-for i in range(len(links)):
-    oldValue = links[i][3]
-    newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
-    Rssi.append(newValue)
+    maxRssi = max(link[3] for link in links)
+    minRssi = min(link[3] for link in links)
+    rangeRssiOld = maxRssi - minRssi
+    Rssi=[]
+    for i in range(len(links)):
+        oldValue = links[i][3]
+        newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
+        Rssi.append(newValue)
+    return Mbps, Rssi
 
 linksColors= list(Color("red").range_to(Color("green"), 20))
 nodesColors={"leader":"red", "leaf": "green", "router": "blue"}
 
-coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
-lats = [lat for lat, lon in coordinates]
-lons = [lon for lat, lon in coordinates]
+# coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
+# lats = [lat for lat, lon in coordinates]
+# lons = [lon for lat, lon in coordinates]
 
 
 def buildLayout():
-    # links=query.getLinks()
-    # nodes=query.getNodi()
-    # nodes=query.getNodes()
+    links=query.getLinks()
+    links=[(id, *link) for id, link in enumerate(links)]
+    Mbps, Rssi = setColors(links)
 
-    # coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
-    # lats = [lat for lat, lon in coordinates]
-    # lons = [lon for lat, lon in coordinates]
+    nodes=query.getNodes()
+    coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
+    lats = [lat for lat, lon in coordinates]
+    lons = [lon for lat, lon in coordinates]
     nodePositions={node[0]: (node[2], node[3]) for node in nodes}
 
     return dbc.Container([
@@ -123,13 +121,22 @@ def buildLayout():
                             radius=9, 
                         )
                         for i, (eui, _label, _lat, _lon, _polling, _sleepPolicy, role, _created, _version, _comment) in enumerate(nodes)
+                    ]+
+                    [
+                        dl.CircleMarker(
+                            id="previewNode",
+                            center=(0, 0),
+                            fill=True,
+                            pathOptions={"dashArray": "6, 6"},
+                            color="grey",
+                            radius=9,
+                        )
                     ],
-                        style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
+                    style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
                 ),
 
                     html.P("Click on a node or link for more details", className='text-center text-secondary'),
                     dbc.Button("Reset Selection", id="reset", color="secondary", className="text-start"),
-                    dbc.Button("Move node", id="moveNode", color="warning", className="text-end ms-3", n_clicks=0)
                 
             ],
             className='', width=5,
@@ -170,6 +177,20 @@ def buildLayout():
 
             dbc.Row(id="clickedNodes", className='mb-4', children=[
                 #callback result
+            ]),
+
+            dbc.Row(id="settingsRow", children=[
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            html.H4("Settings", className="card-title text-center"),
+                            html.P("Click on a single node, then click the 'Move node' button, then click on the map to move the node to the desired position", className="card-text text-center"),
+                            dbc.Input(id="newLat", type="number", placeholder="New latitude", className="mt-3", step=0.001),
+                            dbc.Input(id="newLon", type="number", placeholder="New longitude", className="mt-3", step=0.001),
+                            dbc.Button("Move node", id="moveNode", color="warning", className="text-end mt-3", n_clicks=0),
+                        ])
+                    ])
+                ])
             ]),
 
             #title and instructions
@@ -415,7 +436,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
                             ])
                         )
                 nodeLinksTable=dbc.Table([
-                    html.Thead(html.Tr([html.Th("Link ID"), html.Th("Source node"), html.Th("Destination node"), html.Th("Timestamp"), html.Th("Mbps"), html.Th("Rssi")])),
+                    html.Thead(html.Tr([html.Th("Link ID"), html.Th("Source node"), html.Th("Destination node"), html.Th("Rssi"), html.Th("Quality")])),
                     html.Tbody(nodeLinks)
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
 
@@ -469,20 +490,32 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
     Output({"type": "link", "index": ALL}, "positions"),
     Output("allowMove", "data"),
     Input("nodeMap", "clickData"),
+    Input("moveNode", "n_clicks"),
     State("nodesData", "data"),
     State("linksData", "data"),
     State("selectedNodes", "data"),
     State("allowMove", "data"),
+    State("newLat", "value"),
+    State("newLon", "value"),
     prevent_initial_call=True,
 )
-def moveNode(clickData, nodesData, linksData, selectedNodes, allowMove):
-    if not allowMove or not clickData or len(selectedNodes or [])!=1:
+def moveNode(clickData, _moveNode, nodesData, linksData, selectedNodes, allowMove, newLat, newLon):
+    if len(selectedNodes or [])!=1:
         raise PreventUpdate
     
+    trig=ctx.triggered_id
+    if trig=="moveNode":
+        if newLat is None or newLon is None:
+            raise PreventUpdate
+        lat=newLat
+        lon=newLon
+    else:
+        if not clickData or not allowMove:
+            raise PreventUpdate
+        lat=clickData["latlng"]["lat"]
+        lon=clickData["latlng"]["lng"]
+        
     nodeId=selectedNodes[0]
-    lat=clickData["latlng"]["lat"]
-    lon=clickData["latlng"]["lng"]
-
     query.updateNodePosition(nodeId, lat, lon)
 
     newNodes=[list(node) for node in nodesData]
@@ -497,6 +530,27 @@ def moveNode(clickData, nodesData, linksData, selectedNodes, allowMove):
     newLinks=[[nodePositions[link[1]], nodePositions[link[2]]] for link in linksData]
 
     return newNodes, centers, newLinks, False
+
+@callback(
+        Output("newLat", "value"),
+        Output("newLon", "value"),
+        Input("moveNode", "n_clicks"),
+        prevent_initial_call=True,
+)
+def clearPreview(_moveNode):
+    return None, None
+
+@callback(
+        Output("previewNode", "center"),
+        Output("previewNode", "pathOptions"),
+        Input("newLat", "value"),
+        Input("newLon", "value"),
+        Input("selectedNodes", "data"),
+)
+def updatePreviewNode(newLat, newLon, selectedNodes):
+    if newLat is None or newLon is None or len(selectedNodes or [])!=1:
+        return (0, 0), {"dashArray": "6, 6", "color": "orange"}
+    return (newLat, newLon), {"dashArray": "6, 6", "color": "orange"}
 
 @callback(
     Output("allowMove", "data", allow_duplicate=True),
@@ -541,6 +595,15 @@ def nodeButtonClick(n_clicks, selectedNodes):
     nodeId=trig["index"]
     return [nodeId], "tabNode"
 
+@callback(
+    Output("settingsRow", "style"),
+    Input("contentTabs", "active_tab"),
+    Input("selectedNodes", "data")
+)
+def toggleSettings(activeTab, selectedNodes):
+    if activeTab=="tabSettings" and len(selectedNodes or [])==1:
+        return {"display": "block"}
+    return {"display": "none"}
 
 if __name__ == '__main__':
     app.run(debug=True)

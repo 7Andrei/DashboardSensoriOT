@@ -74,7 +74,7 @@ def getRecentEvents(node, num):
     cursor=conn.cursor()
     events=[]
     cursor.execute("" \
-    "SELECT id, eui, event_type, message, timestamp, severity " \
+    "SELECT id, eui, event_type, message, datetime(timestamp, 'unixepoch', 'localtime'), severity " \
     "FROM event " \
     "WHERE eui=? " \
     "ORDER BY timestamp DESC " \
