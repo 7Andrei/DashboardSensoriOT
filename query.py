@@ -49,24 +49,31 @@ def getLinks():
     conn.close()
     return tmpLinks
 
-def getRecentReadings(node, interval, type):
+def getRecentReadings(node, interval, type, index):
+    if interval<=60*24:
+        bucket=60*60
+    elif interval<=60*24*7:
+        bucket=60*60*6
+    else:
+        bucket=60*60*24
+
     conn=connessione()
     cursor=conn.cursor()
     interval=time.time()-(interval*60)
     readings=[]
-    #sensorID, nodeId, sensor type, timestamp, value
     #selects all ""temperature"" readings for each given node in the last interval minutes 
-    if type=="temperature" or type=="humidity" or type=="pressure":
-        ftype=f"%{type}%"
-        cursor.execute("" \
-        "SELECT id, eui, ? AS sensor, " \
-        "datetime(CAST(timestamp/60 AS INTEGER)*60, 'unixepoch', 'localtime') AS bucket, " \
-        "AVG(sr.value) AS value " \
-        "FROM sensor_reading sr " \
-        "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.eui=? " \
-        "GROUP BY sr.eui, bucket", (type, ftype, interval, node,))
-        readings=cursor.fetchall()
-        conn.close()
+    ftype=f"%{type}%"
+    cursor.execute("" \
+    "SELECT id, eui, ? AS sensor, " \
+    "datetime(CAST(timestamp/? AS INTEGER)*?, 'unixepoch', 'localtime') AS bucket, " \
+    "AVG(sr.value) AS value " \
+    "FROM sensor_reading sr " \
+    "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.eui=? " \
+    "AND (?!='gas' OR sr.sensor_index=?)" \
+    "GROUP BY sr.eui, bucket", (type, bucket, bucket, ftype, interval, node, type, index,))
+    readings=cursor.fetchall()
+    conn.close()
+        
     return readings
 
 def getRecentEvents(node, num):
@@ -100,6 +107,24 @@ def updateNodePosition(node, lat, lon):
     dataId=cursor.lastrowid
     cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "latitude", lat, dataId,))
     cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "longitude", lon, dataId,))
+    conn.commit()
+    conn.close()
+
+def updateNodePolling(node, polling):
+    payload=json.dumps(
+        {
+            "eui": node,
+            "polling_frequency": polling
+        }
+    ).encode("utf-8")
+    payloadUUID=str(uuid.uuid4())
+    timestamp=time.time()
+
+    conn=connessione()
+    cursor=conn.cursor()
+    cursor.execute("INSERT INTO data (uuid, timestamp, data) VALUES (?, ?, ?);", (payloadUUID, timestamp, sqlite3.Binary(payload,)))
+    dataId=cursor.lastrowid
+    cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "polling_frequency", polling, dataId,))
     conn.commit()
     conn.close()
 

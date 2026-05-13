@@ -181,16 +181,27 @@ def buildLayout():
 
             dbc.Row(id="settingsRow", children=[
                 dbc.Col([
+                    html.H4("Node settings", className="card-title text-center mb-3")
+                ], width=12),
+                dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
-                            html.H4("Settings", className="card-title text-center"),
+            
                             html.P("Click on a single node, then click the 'Move node' button, then click on the map to move the node to the desired position", className="card-text text-center"),
                             dbc.Input(id="newLat", type="number", placeholder="New latitude", className="mt-3", step=0.001),
                             dbc.Input(id="newLon", type="number", placeholder="New longitude", className="mt-3", step=0.001),
                             dbc.Button("Move node", id="moveNode", color="warning", className="text-end mt-3", n_clicks=0),
                         ])
                     ])
-                ])
+                ], width=6),
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            dbc.Input(id="newPollingRate", type="number", min=1, placeholder="New polling rate (s)", className="mt-3"),
+                            dbc.Button("Update polling rate", id="updatePolling", color="warning", className="text-end mt-3", n_clicks=0),
+                        ])
+                    ])
+                ], width=6),
             ]),
 
             #title and instructions
@@ -200,11 +211,30 @@ def buildLayout():
                         id="sensorType", 
                         options=[
                             {"label": "Temperature", "value": "temperature"}, 
-                            {"label": "Humidity", "value": "humidity"}
+                            {"label": "Humidity", "value": "humidity"},
+                            {"label": "Pressure", "value": "pressure"},
+                            {"label": "Gas", "value": "gas"},
                         ],
                         value="temperature", 
                         inline=True, 
                         className='btn-group rounded border px-2 py-1 me-3'
+                    ),
+                    dbc.Select(
+                        id="gasType",
+                        options=[
+                            {"label": "0", "value": 0}, 
+                            {"label": "1", "value": 1},
+                            {"label": "2", "value": 2},
+                            {"label": "3", "value": 3},
+                            {"label": "4", "value": 4},
+                            {"label": "5", "value": 5},
+                            {"label": "6", "value": 6},
+                            {"label": "7", "value": 7},
+                            {"label": "8", "value": 8},
+                            {"label": "9", "value": 9},
+                        ],
+                        placeholder="Select gas type",
+                        className="btn-group rounded border px-2 py-1",
                     ),
                     dbc.RadioItems(
                         id="graphTime", 
@@ -215,9 +245,9 @@ def buildLayout():
                         ],
                         value=10080, 
                         inline=True, 
-                        className='btn-group rounded border px-2 py-1'
+                        className='btn-group rounded border px-2 py-1 ms-3'
                     ),
-                ], width=12,),
+                ], width=12, className="d-flex"),
             ], id='controlRow'),
         ], width=7, className='rounded-4'),
 
@@ -288,11 +318,12 @@ def toggleControls(activeTab):
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("sensorType", "value"),
     Input("graphTime", "value"),
+    Input("gasType", "value"),
     Input("contentTabs", "active_tab"),
     Input("nodesData", "data"),
     Input("linksData", "data")
 )
-def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksData):
+def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData, linksData):
     selected = selected or []
     trig = ctx.triggered_id
     linkId=-1
@@ -309,7 +340,7 @@ def updateInfo(selected, _, sensorType, graphTime, activeTab, nodesData, linksDa
         figure=go.Figure()
 
         for nodeId in nodesToShow:
-            results=query.getRecentReadings(nodeId, graphTime, sensorType)
+            results=query.getRecentReadings(nodeId, graphTime, sensorType, gasType if sensorType=="gas" else None)
             if results:
                 # timestamps=[reading[3] for reading in results]
                 timestamps=pd.to_datetime([reading[3] for reading in results], unit='s')
@@ -472,8 +503,8 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
         allHums=[]
 
         for nodeId in nodesToShow:
-            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature")
-            humResults=query.getRecentReadings(nodeId, graphTime, "humidity")
+            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature", None)
+            humResults=query.getRecentReadings(nodeId, graphTime, "humidity", None)
 
             allTemps.extend([reading[4] for reading in tempResults])
             allHums.extend([reading[4] for reading in humResults])
@@ -602,8 +633,35 @@ def nodeButtonClick(n_clicks, selectedNodes):
 )
 def toggleSettings(activeTab, selectedNodes):
     if activeTab=="tabSettings" and len(selectedNodes or [])==1:
-        return {"display": "block"}
+        return {"display": "flex"}
     return {"display": "none"}
+
+@callback(
+    Output("newPollingRate", "value"),
+    Input("updatePolling", "n_clicks"),
+    State("newPollingRate", "value"),
+    State("selectedNodes", "data"),
+    prevent_initial_call=True,
+)
+def updatePollingRate(_update, newPollingRate, selectedNodes):
+    if len(selectedNodes or [])!=1:
+        raise PreventUpdate
+    if newPollingRate is None or newPollingRate<1:
+        raise PreventUpdate
+    
+    nodeId=selectedNodes[0]
+    query.updateNodePolling(nodeId, newPollingRate)
+    newPollingRate=0
+    return newPollingRate
+
+@callback(
+    Output("gasType", "style"),
+    Input("sensorType", "value")
+)
+def toggleGasDropdown(sensorType):
+    if sensorType=="gas":
+        return {"visibility": "visible", "width": "20%"}
+    return {"visibility": "hidden", "width": "20%"}
 
 if __name__ == '__main__':
     app.run(debug=True)
