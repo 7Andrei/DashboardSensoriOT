@@ -43,25 +43,28 @@ def getLinks():
     "AVG(CASE WHEN ld.metric_name='rssi' THEN ld.value_num END) as avg_rssi, " \
     "AVG(CASE WHEN ld.metric_name='link_quality' THEN ld.value_num END) as avg_quality " \
     "FROM link_diagnostic ld " \
+    "WHERE ld.timestamp>=strftime('%s', 'now')-3600 " \
     "GROUP BY src, dst;")
 
     tmpLinks=cursor.fetchall()
     conn.close()
     return tmpLinks
 
-def getRecentReadings(node, interval, type, index):
+def getRecentReadings(node, interval, type, index, raw):
     if interval<=60*24:
         bucket=60*60
     elif interval<=60*24*7:
         bucket=60*60*6
     else:
         bucket=60*60*24
+    if raw==1:
+        bucket=1
 
     conn=connessione()
     cursor=conn.cursor()
     interval=time.time()-(interval*60)
     readings=[]
-    #selects all ""temperature"" readings for each given node in the last interval minutes 
+    #selects all sensor readings for each given node in the last interval minutes 
     ftype=f"%{type}%"
     cursor.execute("" \
     "SELECT id, eui, ? AS sensor, " \
@@ -127,11 +130,3 @@ def updateNodePolling(node, polling):
     cursor.execute("INSERT INTO node_parameter_log (timestamp, eui, parameter_name, value_num, data_id) VALUES (?, ?, ?, ?, ?);", (timestamp, node, "polling_frequency", polling, dataId,))
     conn.commit()
     conn.close()
-
-# def main():
-#     nodes=getNodes()
-#     links=getLinks()
-
-
-# if __name__ == "__main__":    
-#     main()

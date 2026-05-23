@@ -13,19 +13,7 @@ import time #non necessario
 
 database.main()
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-#linkId, node1, node2, timestamp, mbps, rssi VECCHIO
-#linkId, scrNode, dstNode, avgRssi, avgQuality
-links=query.getLinks()
-links=[(id, *link) for id, link in enumerate(links)]
-
-#nodeID, name, ip, role, lat, long VECCHIO
-#nodeEUI, name, lat, lon, polling, sleepPolicy, role, timestamp, version, comment
-
 #sensorID, nodeId, sensor type, timestamp, value
-#60=1h, 1440=1day, 44640=31days
-
-
-
 def setColors(links):
     maxMbps = max(link[4] for link in links)
     minMbps = min(link[4] for link in links)
@@ -49,16 +37,13 @@ def setColors(links):
 linksColors= list(Color("red").range_to(Color("green"), 20))
 nodesColors={"leader":"red", "leaf": "green", "router": "blue"}
 
-# coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
-# lats = [lat for lat, lon in coordinates]
-# lons = [lon for lat, lon in coordinates]
-
-
 def buildLayout():
+    #linkId, scrNode, dstNode, avgRssi, avgQuality
     links=query.getLinks()
     links=[(id, *link) for id, link in enumerate(links)]
     Mbps, Rssi = setColors(links)
 
+    #nodeEUI, name, lat, lon, polling, sleepPolicy, role, timestamp, version, comment
     nodes=query.getNodes()
     coordinates=[(nodo[2], nodo[3]) for nodo in nodes]
     lats = [lat for lat, lon in coordinates]
@@ -75,10 +60,6 @@ def buildLayout():
 
     #main row
     dbc.Row([
-
-        # #spacer col
-        # dbc.Col(width=1),
-
         #map col
         dbc.Col(
             children=[
@@ -117,7 +98,6 @@ def buildLayout():
                             color=nodesColors[role],
                             pathOptions={"fillOpacity": 0.5},
                             opacity=1,
-                            # fillOpacity=1,
                             radius=9, 
                         )
                         for i, (eui, _label, _lat, _lon, _polling, _sleepPolicy, role, _created, _version, _comment) in enumerate(nodes)
@@ -236,7 +216,15 @@ def buildLayout():
                         placeholder="Select gas type",
                         className="btn-group rounded border px-2 py-1",
                     ),
+                    dbc.Row([
+                        dcc.DatePickerRange(
+                            id='dateRange',
+                            display_format='YYYY-MM-DD',
+                            className="mt-3"
+                        )
+                    ]),
                     dbc.RadioItems(
+                        #values in minutes
                         id="graphTime", 
                         options=[
                             {"label": "1 Month", "value": 60*24*31}, 
@@ -248,6 +236,10 @@ def buildLayout():
                         className='btn-group rounded border px-2 py-1 ms-3'
                     ),
                 ], width=12, className="d-flex"),
+                dbc.Col([
+                    dbc.Button("Download raw data", id="downloadButton", color="info", className="text-end mt-3", n_clicks=0),
+                    dcc.Download(id="downloadData", data=None)
+                ])
             ], id='controlRow'),
         ], width=7, className='rounded-4'),
 
@@ -340,9 +332,8 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
         figure=go.Figure()
 
         for nodeId in nodesToShow:
-            results=query.getRecentReadings(nodeId, graphTime, sensorType, gasType if sensorType=="gas" else None)
+            results=query.getRecentReadings(nodeId, graphTime, sensorType, gasType if sensorType=="gas" else None, 0)
             if results:
-                # timestamps=[reading[3] for reading in results]
                 timestamps=pd.to_datetime([reading[3] for reading in results], unit='s')
                 readings=[reading[4] for reading in results]
                 nodeName=next((node[1] for node in nodesData if node[0]==nodeId), f"Node {nodeId}")
@@ -383,7 +374,6 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
             linkTable=html.Div(
                 dbc.Table([
                     html.Tbody([
-                        # html.Tr([html.Th("Timestamp", className="w-50"), html.Td(timestamp)]),
                         html.Tr([html.Th("Link ID"), html.Td(linkId)]),
                     ])
                 ], bordered=False, hover=True, striped=True, className="mb-0"),
@@ -391,7 +381,7 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
             )
 
             return html.Div([
-                html.H4("Dettagli Collegamento", className="text-center text-primary mb-4"),
+                html.H4("Link details", className="text-center text-primary mb-4"),
                 linkRow,
                 linkTable
             ])
@@ -402,15 +392,15 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                 html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("Info"), html.Th("Role"), html.Th("Polling rate"), html.Th("Sleep policy"), html.Th("Firmware version"), html.Th("Created"), html.Th("Location")])),
                 html.Tbody([
                     html.Tr([
-                        html.Td(node[0]),
-                        html.Td(node[1]),
-                        html.Td(node[9]),
-                        html.Td(node[6]),
-                        html.Td(node[4]),
-                        html.Td(node[5]),
-                        html.Td(node[7]),
-                        html.Td(node[8]),
-                        html.Td(f"({node[2]}, {node[3]})"),
+                        html.Td(node[0]), #Node ID
+                        html.Td(node[1]), #Node name
+                        html.Td(node[9]), #Node info
+                        html.Td(node[6]), #Node role
+                        html.Td(node[4]), #Node polling rate
+                        html.Td(node[5]), #Node sleep policy
+                        html.Td(node[7]), #Node created at
+                        html.Td(node[8]), #Node firmware version
+                        html.Td(f"({node[2]}, {node[3]})"), #Node location
                     ]) for node in nodesData if node[0] in selected
                 ])
             ], bordered=True, hover=True, striped=True, className="mt-3 rounded-4")
@@ -443,9 +433,9 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                 if recentEvents:
                     events=[
                         html.Tr([
-                            html.Td(event[2]),
-                            html.Td(event[3]),
-                            html.Td(event[4]),
+                            html.Td(event[2]), #Event type
+                            html.Td(event[3]), #Event description
+                            html.Td(event[4]), #Event timestamp
                         ]) for event in recentEvents
                     ]
                     eventTable=dbc.Table([
@@ -454,13 +444,13 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                     ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
                 nodeLinks=[]
                 for nodeLink in linksData:
-                    # TODO Modificare tabella per aggiungere pulsanti verso i nodi
+                    #TODO Modificare tabella per aggiungere pulsanti verso i nodi
                     if nodeLink[1]==eui or nodeLink[2]==eui:
                         nodeLinks.append(
                             html.Tr([
                                 html.Td(nodeLink[0]),
-                                html.Td(nodeLink[1] if nodeLink[1]==id else nodeLink[2]),
-                                html.Td(nodeLink[2] if nodeLink[2]!=id else nodeLink[1]),
+                                html.Td(nodeLink[1] if nodeLink[1]==eui else nodeLink[2]),
+                                html.Td(nodeLink[2] if nodeLink[2]!=eui else nodeLink[1]),
                                 html.Td(nodeLink[3]),
                                 html.Td(nodeLink[4]),
                                 # html.Td(nodeLink[5]),
@@ -503,8 +493,8 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
         allHums=[]
 
         for nodeId in nodesToShow:
-            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature", None)
-            humResults=query.getRecentReadings(nodeId, graphTime, "humidity", None)
+            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature", None, 0)
+            humResults=query.getRecentReadings(nodeId, graphTime, "humidity", None, 0)
 
             allTemps.extend([reading[4] for reading in tempResults])
             allHums.extend([reading[4] for reading in humResults])
@@ -662,6 +652,35 @@ def toggleGasDropdown(sensorType):
     if sensorType=="gas":
         return {"visibility": "visible", "width": "20%"}
     return {"visibility": "hidden", "width": "20%"}
+
+@callback(
+    Output("downloadData", "data"),
+    Input("downloadButton", "n_clicks"),
+    State("selectedNodes", "data"),
+    State("sensorType", "value"),
+    State("graphTime", "value"),
+    State("gasType", "value"),
+    State("nodesData", "data"),
+    prevent_initial_call=True,
+)
+def downloadData(_download, selectedNodes, sensorType, graphTime, gasType, nodesData):
+    downloadData=[]
+    nodes=selectedNodes or [node[0] for node in nodesData]
+    for node in nodes:
+        results=query.getRecentReadings(node, graphTime, sensorType, gasType if sensorType=="gas" else None, 1)
+        if results:
+            downloadData.extend(results)
+    if not downloadData:
+        raise PreventUpdate
+    
+    df=pd.DataFrame(downloadData, columns=["id", "eui", "sensor", "timestamp", "value"])
+    endTime=datetime.now()
+    startTime=endTime - pd.to_timedelta(graphTime, unit='m')
+    filename=f"readings_{sensorType}_{startTime.strftime('%Y%m%d%H%M%S')}_{endTime.strftime('%Y%m%d%H%M%S')}.csv"
+    return dcc.send_data_frame(df.to_csv, filename, index=False)
+    
+    
+
 
 if __name__ == '__main__':
     app.run(debug=True)
