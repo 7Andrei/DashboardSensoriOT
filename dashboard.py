@@ -437,13 +437,13 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                         html.Tr([html.Td("Polling rate"), html.Td(f"{pollingRate}")]),
                         html.Tr([html.Td("Sleep policy"), html.Td(f"{sleepPolicy}")]),
                         html.Tr([html.Td("Firmware version"), html.Td(f"{version}")]),
-                        html.Tr([html.Td("Created at"), html.Td(f"{created}")]),
+                        html.Tr([html.Td("Created at"), html.Td(datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M:%S"))]),
                         html.Tr([html.Td("Location"), html.Td(f"({lat}, {lon})")])       
                     ])
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow rounded-4")
 
                 eventTable=html.Div("No recent events", className="text-center text-muted mt-3")
-                recentEvents=query.getRecentEvents(eui, 10)
+                recentEvents=query.getRecentEvents(eui, 5)
                 if recentEvents:
                     events=[
                         html.Tr([
@@ -476,11 +476,11 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                 ], bordered=True, hover=True, striped=True, className="mt-3 shadow border rounded-4")
 
                 return html.Div([
-                    html.H4(f"{label} details", className="text-center text-primary mt-4"),
+                    html.H4(f"{label} details", className="text-primary mt-4"),
                     nodeTable,
-                    html.H5("Recent events", className="text-center text-secondary mt-4"),
+                    html.H5("Recent events", className="text-secondary mt-4"),
                     eventTable,
-                    html.H5("Related links", className="text-center text-secondary mt-4"),
+                    html.H5("Related links", className="text-secondary mt-4"),
                     nodeLinksTable
                 ])
             else:
