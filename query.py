@@ -6,7 +6,7 @@ import uuid
 import json
 
 dir = os.path.dirname(__file__)
-database = os.path.join(dir, "DBVero/data.db")
+database = os.path.join(dir, "data.db")
 
 def connessione():
     return sqlite3.connect(database)

@@ -140,7 +140,7 @@ def buildLayout():
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
-                            html.H4("Avarage temperature", className="card-subtitle text-muted"),
+                            html.H4("Average temperature", className="card-subtitle text-muted"),
                             html.H4(id="avgTemp", children="-- °C", className="card-title text-danger"),
                         ], className=" rounded-4 text-center")
                     ])
@@ -148,7 +148,7 @@ def buildLayout():
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
-                            html.H4("Avarage humidity", className="card-subtitle text-muted"),
+                            html.H4("Average humidity", className="card-subtitle text-muted"),
                             html.H4(id="avgHum", children="-- %", className="card-title text-info"),
                         ], className=" rounded-4 text-center")
                     ])
@@ -184,9 +184,10 @@ def buildLayout():
                 ], width=6),
             ]),
 
-            #title and instructions
             dbc.Row([
                 dbc.Col([
+                    html.Div([
+                    html.Div([
                     dbc.RadioItems(
                         id="sensorType", 
                         options=[
@@ -196,8 +197,11 @@ def buildLayout():
                             {"label": "Gas", "value": "gas"},
                         ],
                         value="temperature", 
-                        inline=True, 
-                        className='btn-group rounded border px-2 py-1 me-3'
+                        # inline=True, 
+                        className='btn-group',
+                        inputClassName="btn-check",
+                        labelClassName="btn btn-outline-primary",
+                        labelCheckedClassName="active",
                     ),
                     dbc.Select(
                         id="gasType",
@@ -213,16 +217,16 @@ def buildLayout():
                             {"label": "8", "value": 8},
                             {"label": "9", "value": 9},
                         ],
-                        placeholder="Select gas type",
-                        className="btn-group rounded border px-2 py-1",
+                        placeholder="Select gas",
+                        className="form-select shadow-sm",
                     ),
-                    dbc.Row([
-                        dcc.DatePickerRange(
-                            id='dateRange',
-                            display_format='YYYY-MM-DD',
-                            className="mt-3"
-                        )
-                    ]),
+                    ], className="d-flex align-items-center gap-3"),
+                    # dcc.DatePickerRange(
+                    #     id='dateRange',
+                    #     display_format='YYYY-MM-DD',
+                    #     className="shaow-sm",
+                    # ),
+                    html.Div([
                     dbc.RadioItems(
                         #values in minutes
                         id="graphTime", 
@@ -232,14 +236,24 @@ def buildLayout():
                             {"label": "1 Day", "value": 60*24}, 
                         ],
                         value=10080, 
-                        inline=True, 
-                        className='btn-group rounded border px-2 py-1 ms-3'
+                        # inline=True, 
+                        className='btn-group',
+                        inputClassName="btn-check",
+                        labelClassName="btn btn-outline-primary",
+                        labelCheckedClassName="active",
                     ),
-                ], width=12, className="d-flex"),
-                dbc.Col([
-                    dbc.Button("Download raw data", id="downloadButton", color="info", className="text-end mt-3", n_clicks=0),
-                    dcc.Download(id="downloadData", data=None)
-                ])
+                    ], className="d-flex align-items-center gap-2"),
+                    html.Div([
+                    dbc.Button(
+                        "Download raw data", 
+                        id="downloadButton", 
+                        color="info", 
+                        n_clicks=0,
+                        className="shadow-sm ms-auto"),
+                    dcc.Download(id="downloadData", data=None),
+                    ], className="d-flex align-items-center"),
+                    ], className="d-flex flex-wrap w-100 justify-content-between align-items-center p-3 bg-light border rounded-4 shadow-sm")
+                ], width=12,),
             ], id='controlRow'),
         ], width=7, className='rounded-4'),
 
@@ -650,8 +664,8 @@ def updatePollingRate(_update, newPollingRate, selectedNodes):
 )
 def toggleGasDropdown(sensorType):
     if sensorType=="gas":
-        return {"visibility": "visible", "width": "20%"}
-    return {"visibility": "hidden", "width": "20%"}
+        return {"display": "block", "width": "120px"}
+    return {"display": "none", "width": "120px"}
 
 @callback(
     Output("downloadData", "data"),
