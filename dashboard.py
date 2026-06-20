@@ -74,6 +74,7 @@ def buildLayout():
                     doubleClickZoom=False,            
                     children=[
                         dl.TileLayer(
+                            id="baseMap",
                             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                             attribution="Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
                             maxNativeZoom=19,
@@ -115,8 +116,38 @@ def buildLayout():
                     style={'width': '100%', 'height': '700px'}, className='align-self-center rounded-4 shadow'
                 ),
 
+                    html.Div(
+                        style={
+                            'position': 'absolute',
+                            'bottom': '150px',
+                            'left': '15px',
+                            'zIndex': '1000',
+                        },
+                        children=[
+                            html.H5("Node roles", className="text-secondary"),\
+                            html.Div([
+                                html.Div("Leader", className="text-danger"),
+                                html.Div("Router", className="text-primary"),
+                                html.Div("Leaf", className="text-success"),
+                            ],)
+                        ],
+                        className="bg-light p-2 rounded-4 shadow-sm"
+                    ),
+
                     html.P("Click on a node or link for more details", className='text-center text-secondary'),
                     dbc.Button("Reset Selection", id="reset", color="secondary", className="text-start"),
+                    dbc.RadioItems(
+                        id="mapStyle",
+                        options=[
+                            {"label": "Satellite", "value": "satellite"},
+                            {"label": "OpenStreetMap", "value": "osm"},
+                        ],
+                        value="satellite",
+                        className='btn-group',
+                        inputClassName="btn-check",
+                        labelClassName="btn btn-outline-primary",
+                        labelCheckedClassName="active",
+                    )
                 
             ],
             className='', width=5,
@@ -692,6 +723,19 @@ def downloadData(_download, selectedNodes, sensorType, graphTime, gasType, nodes
     startTime=endTime - pd.to_timedelta(graphTime, unit='m')
     filename=f"readings_{sensorType}_{startTime.strftime('%Y%m%d%H%M%S')}_{endTime.strftime('%Y%m%d%H%M%S')}.csv"
     return dcc.send_data_frame(df.to_csv, filename, index=False)
+
+@callback(
+    Output("baseMap", "url"),
+    Output("baseMap", "attribution"),
+    Input("mapStyle", "value")
+)
+def changeMapStyle(mapStyle):
+    if mapStyle=="osm":
+        return ("https://tile.openstreetmap.org/{z}/{x}/{y}.png", 
+                "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors")
+    else:
+        return ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", 
+                "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community")
     
     
 
