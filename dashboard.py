@@ -434,7 +434,7 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
             return dbc.Alert("No node or too many nodes selected", color="warning", className="text-center")
         elif len(selected)>1:
             nodeTable=dbc.Table([
-                html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("Info"), html.Th("Role"), html.Th("Polling rate"), html.Th("Sleep policy"), html.Th("Firmware version"), html.Th("Created"), html.Th("Location")])),
+                html.Thead(html.Tr([html.Th("ID"), html.Th("Name"), html.Th("Info"), html.Th("Role"), html.Th("Polling rate"), html.Th("Sleep policy"), html.Th("Created"), html.Th("Firmware"), html.Th("Location")])),
                 html.Tbody([
                     html.Tr([
                         html.Td(node[0]), #Node ID
@@ -443,7 +443,7 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                         html.Td(node[6]), #Node role
                         html.Td(node[4]), #Node polling rate
                         html.Td(node[5]), #Node sleep policy
-                        html.Td(node[7]), #Node created at
+                        html.Td(datetime.fromtimestamp(node[7]).strftime("%Y-%m-%d %H:%M:%S")), #Node created at
                         html.Td(node[8]), #Node firmware version
                         html.Td(f"({node[2]}, {node[3]})"), #Node location
                     ]) for node in nodesData if node[0] in selected
