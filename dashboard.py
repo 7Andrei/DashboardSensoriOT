@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State, no_update
+from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State, no_update, clientside_callback, ClientsideFunction
 from dash.exceptions import PreventUpdate
 from colour import Color
 from datetime import datetime
@@ -198,10 +198,11 @@ def buildLayout():
                     dbc.Card([
                         dbc.CardBody([
             
-                            html.P("Click on a single node, then click the 'Move node' button, then click on the map to move the node to the desired position", className="card-text text-center"),
+                            # html.P("Click on a single node, then click the 'Move node' button, then click on the map to move the node to the desired position", className="card-text text-center"),
                             dbc.Input(id="newLat", type="number", placeholder="New latitude", className="mt-3", step=0.001),
                             dbc.Input(id="newLon", type="number", placeholder="New longitude", className="mt-3", step=0.001),
                             dbc.Button("Move node", id="moveNode", color="warning", className="text-end mt-3", n_clicks=0),
+                            dbc.Button("Use my location", id="getLocation", color="info", className="text-end mt-3 ms-2", n_clicks=0),
                         ])
                     ])
                 ], width=6),
@@ -554,18 +555,18 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
     Output("nodesData", "data"),
     Output({"type": "nodeDot", "index": ALL}, "center"),
     Output({"type": "link", "index": ALL}, "positions"),
-    Output("allowMove", "data"),
+    # Output("allowMove", "data"),
     Input("nodeMap", "clickData"),
     Input("moveNode", "n_clicks"),
     State("nodesData", "data"),
     State("linksData", "data"),
     State("selectedNodes", "data"),
-    State("allowMove", "data"),
+    # State("allowMove", "data"),
     State("newLat", "value"),
     State("newLon", "value"),
     prevent_initial_call=True,
 )
-def moveNode(clickData, _moveNode, nodesData, linksData, selectedNodes, allowMove, newLat, newLon):
+def moveNode(clickData, _moveNode, nodesData, linksData, selectedNodes, newLat, newLon):
     if len(selectedNodes or [])!=1:
         raise PreventUpdate
     
@@ -575,11 +576,6 @@ def moveNode(clickData, _moveNode, nodesData, linksData, selectedNodes, allowMov
             raise PreventUpdate
         lat=newLat
         lon=newLon
-    else:
-        if not clickData or not allowMove:
-            raise PreventUpdate
-        lat=clickData["latlng"]["lat"]
-        lon=clickData["latlng"]["lng"]
         
     nodeId=selectedNodes[0]
     query.updateNodePosition(nodeId, lat, lon)
@@ -595,16 +591,32 @@ def moveNode(clickData, _moveNode, nodesData, linksData, selectedNodes, allowMov
     nodePositions={node[0]:[node[2], node[3]] for node in newNodes}
     newLinks=[[nodePositions[link[1]], nodePositions[link[2]]] for link in linksData]
 
-    return newNodes, centers, newLinks, False
+    return newNodes, centers, newLinks
 
 @callback(
         Output("newLat", "value"),
         Output("newLon", "value"),
-        Input("moveNode", "n_clicks"),
+        Output("newLat", "placeholder"),
+        Output("newLon", "placeholder"),
+        Input("selectedNodes", "data"),
+        Input("nodesData", "data"),
         prevent_initial_call=True,
 )
-def clearPreview(_moveNode):
-    return None, None
+def clearPreview(selectedNodes, nodesData):
+    lat=lon=None
+    latPlaceholder=lonPlaceholder="New value"
+    if len(selectedNodes or [])==1:
+        nodeId=selectedNodes[0]
+        nodeInfo=next((node for node in nodesData if node[0]==nodeId), None)
+        if nodeInfo:
+            lat=nodeInfo[2]
+            lon=nodeInfo[3]
+            latPlaceholder=f"Current: {lat}"
+            lonPlaceholder=f"Current: {lon}"
+        else:
+            latPlaceholder="Node not found"
+            lonPlaceholder="Node not found"
+    return lat, lon, latPlaceholder, lonPlaceholder
 
 @callback(
         Output("previewNode", "center"),
@@ -618,29 +630,29 @@ def updatePreviewNode(newLat, newLon, selectedNodes):
         return (0, 0), {"dashArray": "6, 6", "color": "orange"}
     return (newLat, newLon), {"dashArray": "6, 6", "color": "orange"}
 
-@callback(
-    Output("allowMove", "data", allow_duplicate=True),
-    Input("moveNode", "n_clicks"),
-    Input("reset", "n_clicks"),
-    State("selectedNodes", "data"),
-    prevent_initial_call=True,
-)
-def allowMoveNode(_allow, _reset, selectedNodes):
-    trig=ctx.triggered_id
-    if trig=="reset":
-        return False
-    if len(selectedNodes or [])!=1:
-        return False
-    return True
+# @callback(
+#     Output("allowMove", "data", allow_duplicate=True),
+#     Input("moveNode", "n_clicks"),
+#     Input("reset", "n_clicks"),
+#     State("selectedNodes", "data"),
+#     prevent_initial_call=True,
+# )
+# def allowMoveNode(_allow, _reset, selectedNodes):
+#     trig=ctx.triggered_id
+#     if trig=="reset":
+#         return False
+#     if len(selectedNodes or [])!=1:
+#         return False
+#     return True
 
-@callback(
-    Output("moveNode", "disabled"),
-    Input("selectedNodes", "data")
-)
-def disableMove(selectedNodes):
-    if len(selectedNodes or [])!=1:
-        return True
-    return False
+# @callback(
+#     Output("moveNode", "disabled"),
+#     Input("selectedNodes", "data")
+# )
+# def disableMove(selectedNodes):
+#     if len(selectedNodes or [])!=1:
+#         return True
+#     return False
 
 @callback(
     # fix duplicate
@@ -736,9 +748,18 @@ def changeMapStyle(mapStyle):
     else:
         return ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", 
                 "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community")
-    
-    
+
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
+        function_name='getLocation'
+    ),
+    Output("newLat", "value", allow_duplicate=True),
+    Output("newLon", "value", allow_duplicate=True),
+    Input("getLocation", "n_clicks"),
+    prevent_initial_call=True
+)
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=8050)
