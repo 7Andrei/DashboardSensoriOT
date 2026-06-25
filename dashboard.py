@@ -1,7 +1,7 @@
 from dash import Dash, html, dcc, callback, Output, Input, ctx, ALL, State, no_update, clientside_callback, ClientsideFunction
 from dash.exceptions import PreventUpdate
 from colour import Color
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
@@ -9,21 +9,11 @@ import plotly.express as px
 import pandas as pd
 import database
 import query
-import time #non necessario
 
 database.main()
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 #sensorID, nodeId, sensor type, timestamp, value
 def setColors(links):
-    maxMbps = max(link[4] for link in links)
-    minMbps = min(link[4] for link in links)
-    rangeMbpsOld = maxMbps - minMbps
-    Mbps=[]
-    for i in range(len(links)):
-        oldValue = links[i][4]
-        newValue = int((((oldValue - minMbps) * 10) / rangeMbpsOld) + 2)
-        Mbps.append(newValue)
-
     maxRssi = max(link[3] for link in links)
     minRssi = min(link[3] for link in links)
     rangeRssiOld = maxRssi - minRssi
@@ -32,7 +22,7 @@ def setColors(links):
         oldValue = links[i][3]
         newValue = int(((oldValue - minRssi) * 19) / rangeRssiOld)
         Rssi.append(newValue)
-    return Mbps, Rssi
+    return Rssi
 
 linksColors= list(Color("red").range_to(Color("green"), 20))
 nodesColors={"leader":"red", "leaf": "green", "router": "blue"}
@@ -41,7 +31,7 @@ def buildLayout():
     #linkId, scrNode, dstNode, avgRssi, avgQuality
     links=query.getLinks()
     links=[(id, *link) for id, link in enumerate(links)]
-    Mbps, Rssi = setColors(links)
+    Rssi = setColors(links)
 
     #nodeEUI, name, lat, lon, polling, sleepPolicy, role, timestamp, version, comment
     nodes=query.getNodes()
@@ -56,7 +46,7 @@ def buildLayout():
 
     #title row
     dbc.Row([
-        dbc.Col(html.H1("Dashboard prova", className='text-center text-primary mb-4'), width=12)]),
+        dbc.Col(html.H1("Dashboard", className='text-center text-primary mb-4'), width=12)]),
 
     #main row
     dbc.Row([
@@ -86,10 +76,10 @@ def buildLayout():
                             id={"type": "link", "index": id},
                             positions=[nodePositions[n1], nodePositions[n2]],
                             color=str(linksColors[Rssi[i]]),
-                            weight=Mbps[i],
+                            weight=8,
                             opacity=0.5,
                         )
-                        for i, (id, n1, n2, mbps, rssi) in enumerate(links)
+                        for i, (id, n1, n2, rssi, mbps) in enumerate(links)
                     ]+
                     [
                         dl.CircleMarker(
@@ -129,6 +119,22 @@ def buildLayout():
                                 html.Div("Leader", className="text-danger"),
                                 html.Div("Router", className="text-primary"),
                                 html.Div("Leaf", className="text-success"),
+                            ],)
+                        ],
+                        className="bg-light p-2 rounded-4 shadow-sm"
+                    ),
+                    html.Div(
+                        style={
+                            'position': 'absolute',
+                            'bottom': '150px',
+                            'left': '135px',
+                            'zIndex': '1000',
+                        },
+                        children=[
+                            html.H5("Link RSSI", className="text-secondary"),\
+                            html.Div([
+                                html.Div("Weakest", className="text-danger"),
+                                html.Div("Strongest", className="text-success"),
                             ],)
                         ],
                         className="bg-light p-2 rounded-4 shadow-sm"
@@ -219,71 +225,70 @@ def buildLayout():
             dbc.Row([
                 dbc.Col([
                     html.Div([
-                    html.Div([
-                    dbc.RadioItems(
-                        id="sensorType", 
-                        options=[
-                            {"label": "Temperature", "value": "temperature"}, 
-                            {"label": "Humidity", "value": "humidity"},
-                            {"label": "Pressure", "value": "pressure"},
-                            {"label": "Gas", "value": "gas"},
-                        ],
-                        value="temperature", 
-                        # inline=True, 
-                        className='btn-group',
-                        inputClassName="btn-check",
-                        labelClassName="btn btn-outline-primary",
-                        labelCheckedClassName="active",
-                    ),
-                    dbc.Select(
-                        id="gasType",
-                        options=[
-                            {"label": "0", "value": 0}, 
-                            {"label": "1", "value": 1},
-                            {"label": "2", "value": 2},
-                            {"label": "3", "value": 3},
-                            {"label": "4", "value": 4},
-                            {"label": "5", "value": 5},
-                            {"label": "6", "value": 6},
-                            {"label": "7", "value": 7},
-                            {"label": "8", "value": 8},
-                            {"label": "9", "value": 9},
-                        ],
-                        placeholder="Select gas",
-                        className="form-select shadow-sm",
-                    ),
-                    ], className="d-flex align-items-center gap-3"),
-                    # dcc.DatePickerRange(
-                    #     id='dateRange',
-                    #     display_format='YYYY-MM-DD',
-                    #     className="shaow-sm",
-                    # ),
-                    html.Div([
-                    dbc.RadioItems(
-                        #values in minutes
-                        id="graphTime", 
-                        options=[
-                            {"label": "1 Month", "value": 60*24*31}, 
-                            {"label": "1 Week", "value": 60*24*7}, 
-                            {"label": "1 Day", "value": 60*24}, 
-                        ],
-                        value=10080, 
-                        # inline=True, 
-                        className='btn-group',
-                        inputClassName="btn-check",
-                        labelClassName="btn btn-outline-primary",
-                        labelCheckedClassName="active",
-                    ),
-                    ], className="d-flex align-items-center gap-2"),
-                    html.Div([
-                    dbc.Button(
-                        "Download raw data", 
-                        id="downloadButton", 
-                        color="info", 
-                        n_clicks=0,
-                        className="shadow-sm ms-auto"),
-                    dcc.Download(id="downloadData", data=None),
-                    ], className="d-flex align-items-center"),
+                        html.Div([
+                            dbc.RadioItems(
+                                id="sensorType", 
+                                options=[
+                                    {"label": "Temperature", "value": "temperature"}, 
+                                    {"label": "Humidity", "value": "humidity"},
+                                    {"label": "Pressure", "value": "pressure"},
+                                    {"label": "Gas", "value": "gas"},
+                                ],
+                                value="temperature", 
+                                className='btn-group',
+                                inputClassName="btn-check",
+                                labelClassName="btn btn-outline-primary",
+                                labelCheckedClassName="active",
+                            ),
+                            dbc.Select(
+                                id="gasType",
+                                options=[
+                                    {"label": "0", "value": 0}, 
+                                    {"label": "1", "value": 1},
+                                    {"label": "2", "value": 2},
+                                    {"label": "3", "value": 3},
+                                    {"label": "4", "value": 4},
+                                    {"label": "5", "value": 5},
+                                    {"label": "6", "value": 6},
+                                    {"label": "7", "value": 7},
+                                    {"label": "8", "value": 8},
+                                    {"label": "9", "value": 9},
+                                ],
+                                placeholder="Select gas",
+                                className="form-select shadow-sm",
+                            ),
+                            ], className="d-flex align-items-center gap-3"),
+                            html.Div([
+                                dcc.DatePickerRange(
+                                    id='dateRange',
+                                    display_format='YYYY-MM-DD',
+                                    className="btn-group",
+                                ),
+                                dbc.RadioItems(
+                                    #values in minutes
+                                    id="graphTime", 
+                                    options=[
+                                        # {"label": "1 Month", "value": 60*24*31}, 
+                                        {"label": "1 Week", "value": 60*24*7}, 
+                                        {"label": "1 Day", "value": 60*24}, 
+                                    ],
+                                    value=10080, 
+                                    # inline=True, 
+                                    className='btn-group',
+                                    inputClassName="btn-check",
+                                    labelClassName="btn btn-outline-primary",
+                                    labelCheckedClassName="active",
+                                ),
+                            ], className="d-flex align-items-center gap-2"),
+                            html.Div([
+                            dbc.Button(
+                                "Download raw data", 
+                                id="downloadButton", 
+                                color="info", 
+                                n_clicks=0,
+                                className="shadow-sm ms-auto"),
+                            dcc.Download(id="downloadData", data=None),
+                        ], className="d-flex align-items-center"),
                     ], className="d-flex flex-wrap w-100 justify-content-between align-items-center p-3 bg-light border rounded-4 shadow-sm")
                 ], width=12,),
             ], id='controlRow'),
@@ -356,12 +361,14 @@ def toggleControls(activeTab):
     Input({"type": "link", "index": ALL}, "n_clicks"),
     Input("sensorType", "value"),
     Input("graphTime", "value"),
+    Input("dateRange", "start_date"),
+    Input("dateRange", "end_date"),
     Input("gasType", "value"),
     Input("contentTabs", "active_tab"),
     Input("nodesData", "data"),
     Input("linksData", "data")
 )
-def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData, linksData):
+def updateInfo(selected, _, sensorType, graphTime, startDate, endDate, gasType, activeTab, nodesData, linksData):
     selected = selected or []
     trig = ctx.triggered_id
     linkId=-1
@@ -378,9 +385,18 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
         figure=go.Figure()
 
         for nodeId in nodesToShow:
-            results=query.getRecentReadings(nodeId, graphTime, sensorType, gasType if sensorType=="gas" else None, 0)
+            if startDate and endDate:
+                startTs=datetime.strptime(startDate, "%Y-%m-%d").timestamp()
+                endTs=datetime.strptime(endDate, "%Y-%m-%d").timestamp() + 86399  # Add 23:59:59 to include end date
+            elif graphTime:
+                endTs=datetime.now().timestamp()
+                startTs=endTs-(graphTime*60)
+            else:
+                endTs=datetime.now().timestamp()
+                startTs=endTs-(60*24*7)  # Default to 1 week if no input
+            results=query.getRecentReadings(nodeId, startTs, endTs, sensorType, gasType if sensorType=="gas" else None, 0)
             if results:
-                timestamps=pd.to_datetime([reading[3] for reading in results], unit='s')
+                timestamps=pd.to_datetime([reading[3] for reading in results])
                 readings=[reading[4] for reading in results]
                 nodeName=next((node[1] for node in nodesData if node[0]==nodeId), f"Node {nodeId}")
 
@@ -394,7 +410,9 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
             if not linkData:
                 return dbc.Alert("Error retriving link data", color="danger")
             
-            linkId, srcId, dstId, mbps, rssi = linkData
+            linkId, srcId, dstId, rssi, mbps = linkData
+            rssi=round(rssi, 2)
+            mbps=round(mbps, 2)
             srcNode = next((n for n in nodesData if n[0] == srcId), None)
             dstNode = next((n for n in nodesData if n[0] == dstId), None)
             
@@ -407,7 +425,7 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
 
                 #data col
                 dbc.Col(html.Div([
-                    html.Div(f"Speed: {mbps} Mbps", className="text-success fw-bold"),
+                    html.Div(f"Quality: {mbps}", className="text-success fw-bold"),
                     html.Div(f"Strenght: {rssi} dBm", className="text-warning fw-bold")
                 ], className="text-center d-flex flex-column justify-content-center h-100"), width=4),
 
@@ -499,7 +517,6 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
                                 html.Td(nodeLink[2] if nodeLink[2]!=eui else nodeLink[1]),
                                 html.Td(nodeLink[3]),
                                 html.Td(nodeLink[4]),
-                                # html.Td(nodeLink[5]),
                             ])
                         )
                 nodeLinksTable=dbc.Table([
@@ -524,10 +541,12 @@ def updateInfo(selected, _, sensorType, graphTime, gasType, activeTab, nodesData
     Output("avgHum", "children"),
     Input("contentTabs", "active_tab"),
     Input("graphTime", "value"),
+    Input("dateRange", "start_date"),
+    Input("dateRange", "end_date"),
     Input("selectedNodes", "data"),
     State("nodesData", "data")
 )
-def updateAvgStats(activeTab, graphTime, selected, nodesData):
+def updateAvgStats(activeTab, graphTime, startDate, endDate, selected, nodesData):
     if activeTab=="tabStats":
         selected = selected or []
         if selected:
@@ -538,9 +557,19 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
         allTemps=[]
         allHums=[]
 
+        if startDate and endDate:
+            startTs=datetime.strptime(startDate, "%Y-%m-%d").timestamp()
+            endTs=datetime.strptime(endDate, "%Y-%m-%d").timestamp() + 86399  # Add 23:59:59 to include end date
+        elif graphTime:
+            endTs=datetime.now().timestamp()
+            startTs=endTs-(graphTime*60)
+        else:
+            endTs=datetime.now().timestamp()
+            startTs=endTs-(60*24*7)  # Default to 1 week if no input
+
         for nodeId in nodesToShow:
-            tempResults=query.getRecentReadings(nodeId, graphTime, "temperature", None, 0)
-            humResults=query.getRecentReadings(nodeId, graphTime, "humidity", None, 0)
+            tempResults=query.getRecentReadings(nodeId, startTs, endTs, "temperature", None, 0)
+            humResults=query.getRecentReadings(nodeId, startTs, endTs, "humidity", None, 0)
 
             allTemps.extend([reading[4] for reading in tempResults])
             allHums.extend([reading[4] for reading in humResults])
@@ -555,13 +584,11 @@ def updateAvgStats(activeTab, graphTime, selected, nodesData):
     Output("nodesData", "data"),
     Output({"type": "nodeDot", "index": ALL}, "center"),
     Output({"type": "link", "index": ALL}, "positions"),
-    # Output("allowMove", "data"),
     Input("nodeMap", "clickData"),
     Input("moveNode", "n_clicks"),
     State("nodesData", "data"),
     State("linksData", "data"),
     State("selectedNodes", "data"),
-    # State("allowMove", "data"),
     State("newLat", "value"),
     State("newLon", "value"),
     prevent_initial_call=True,
@@ -630,32 +657,7 @@ def updatePreviewNode(newLat, newLon, selectedNodes):
         return (0, 0), {"dashArray": "6, 6", "color": "orange"}
     return (newLat, newLon), {"dashArray": "6, 6", "color": "orange"}
 
-# @callback(
-#     Output("allowMove", "data", allow_duplicate=True),
-#     Input("moveNode", "n_clicks"),
-#     Input("reset", "n_clicks"),
-#     State("selectedNodes", "data"),
-#     prevent_initial_call=True,
-# )
-# def allowMoveNode(_allow, _reset, selectedNodes):
-#     trig=ctx.triggered_id
-#     if trig=="reset":
-#         return False
-#     if len(selectedNodes or [])!=1:
-#         return False
-#     return True
-
-# @callback(
-#     Output("moveNode", "disabled"),
-#     Input("selectedNodes", "data")
-# )
-# def disableMove(selectedNodes):
-#     if len(selectedNodes or [])!=1:
-#         return True
-#     return False
-
 @callback(
-    # fix duplicate
     Output("selectedNodes", "data", allow_duplicate=True),
     Output("contentTabs", "active_tab"),
     Input({"type": "nodeButton", "index": ALL}, "n_clicks"),
@@ -716,15 +718,32 @@ def toggleGasDropdown(sensorType):
     State("selectedNodes", "data"),
     State("sensorType", "value"),
     State("graphTime", "value"),
+    State("dateRange", "start_date"),
+    State("dateRange", "end_date"),
     State("gasType", "value"),
     State("nodesData", "data"),
     prevent_initial_call=True,
 )
-def downloadData(_download, selectedNodes, sensorType, graphTime, gasType, nodesData):
+def downloadData(_download, selectedNodes, sensorType, graphTime, startTs, endTs, gasType, nodesData):
     downloadData=[]
     nodes=selectedNodes or [node[0] for node in nodesData]
+    if startTs and endTs:
+        startTime=datetime.strptime(startTs, "%Y-%m-%d").timestamp()
+        endTime=datetime.strptime(endTs, "%Y-%m-%d").timestamp() + 86399  # Add 23:59:59 to include end date
+        startFile=datetime.fromtimestamp(startTime)
+        endFile=datetime.fromtimestamp(endTime)
+    elif graphTime:
+        endTime=datetime.now().timestamp()
+        startTime=endTs-(graphTime*60)
+        startFile=datetime.fromtimestamp(startTime)
+        endFile=datetime.fromtimestamp(endTime)
+    else:
+        endTime=datetime.now().timestamp()
+        startTime=endTime-(60*24*7)  # Default to 1 week if no input
+        startFile=datetime.fromtimestamp(startTime)
+        endFile=datetime.fromtimestamp(endTime)
     for node in nodes:
-        results=query.getRecentReadings(node, graphTime, sensorType, gasType if sensorType=="gas" else None, 1)
+        results=query.getRecentReadings(node, startTime, endTime, sensorType, gasType if sensorType=="gas" else None, 1)
         if results:
             downloadData.extend(results)
     if not downloadData:
@@ -732,8 +751,7 @@ def downloadData(_download, selectedNodes, sensorType, graphTime, gasType, nodes
     
     df=pd.DataFrame(downloadData, columns=["id", "eui", "sensor", "timestamp", "value"])
     endTime=datetime.now()
-    startTime=endTime - pd.to_timedelta(graphTime, unit='m')
-    filename=f"readings_{sensorType}_{startTime.strftime('%Y%m%d%H%M%S')}_{endTime.strftime('%Y%m%d%H%M%S')}.csv"
+    filename=f"readings_{sensorType}_{startFile.strftime('%Y%m%d%H%M%S')}_{endFile.strftime('%Y%m%d%H%M%S')}.csv"
     return dcc.send_data_frame(df.to_csv, filename, index=False)
 
 @callback(
@@ -748,6 +766,24 @@ def changeMapStyle(mapStyle):
     else:
         return ("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", 
                 "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community")
+    
+@callback(
+    Output("dateRange", "start_date"),
+    Output("dateRange", "end_date"),
+    Output("graphTime", "value"),
+    Input("graphTime", "value"),
+    Input("dateRange", "start_date"),
+    Input("dateRange", "end_date"),
+    prevent_initial_call=True
+)
+def updateDateRange(graphTime, startDate, endDate):
+    trig=ctx.triggered_id
+    if trig=="graphTime":
+        return None, None, graphTime
+    elif trig=="dateRange":
+        return no_update, no_update, None
+    else:
+        return no_update, no_update, no_update
 
 clientside_callback(
     ClientsideFunction(
@@ -762,4 +798,4 @@ clientside_callback(
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run(host='0.0.0.0', port=8050)

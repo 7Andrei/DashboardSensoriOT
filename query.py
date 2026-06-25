@@ -50,34 +50,66 @@ def getLinks():
     conn.close()
     return tmpLinks
 
-def getRecentReadings(node, interval, type, index, raw):
-    if interval<=60*24:
+# def getRecentReadings2(node, interval, type, index, raw):
+#     if interval<=60*24:
+#         bucket=60*60
+#     elif interval<=60*24*7:
+#         bucket=60*60*6
+#     else:
+#         bucket=60*60*24
+#     if raw==1:
+#         bucket=1
+
+#     conn=connessione()
+#     cursor=conn.cursor()
+#     interval=time.time()-(interval*60)
+#     readings=[]
+#     #selects all sensor readings for each given node in the last interval minutes 
+#     ftype=f"%{type}%"
+#     cursor.execute("" \
+#     "SELECT id, eui, ? AS sensor, " \
+#     "datetime(CAST(timestamp/? AS INTEGER)*?, 'unixepoch', 'localtime') AS bucket, " \
+#     "AVG(sr.value) AS value " \
+#     "FROM sensor_reading sr " \
+#     "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.eui=? " \
+#     "AND (?!='gas' OR sr.sensor_index=?)" \
+#     "GROUP BY sr.eui, bucket", (type, bucket, bucket, ftype, interval, node, type, index,))
+#     readings=cursor.fetchall()
+#     conn.close()
+        
+#     return readings
+
+def getRecentReadings(node, startTs, endTs, type, index, raw):
+    interval=endTs-startTs
+    if interval<=60*60*24:
         bucket=60*60
-    elif interval<=60*24*7:
+    elif interval<=60*60*24*7:
         bucket=60*60*6
     else:
         bucket=60*60*24
+        # LOGICA PER FARE SEMPRE 30 PUNTI
     if raw==1:
         bucket=1
 
     conn=connessione()
     cursor=conn.cursor()
-    interval=time.time()-(interval*60)
     readings=[]
-    #selects all sensor readings for each given node in the last interval minutes 
+    #selects all sensor readings for each given node in the last interval minutes
     ftype=f"%{type}%"
     cursor.execute("" \
     "SELECT id, eui, ? AS sensor, " \
     "datetime(CAST(timestamp/? AS INTEGER)*?, 'unixepoch', 'localtime') AS bucket, " \
     "AVG(sr.value) AS value " \
     "FROM sensor_reading sr " \
-    "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.eui=? " \
+    "WHERE sr.sensor_name LIKE ? AND sr.timestamp>=? AND sr.timestamp<=? AND sr.eui=? " \
     "AND (?!='gas' OR sr.sensor_index=?)" \
-    "GROUP BY sr.eui, bucket", (type, bucket, bucket, ftype, interval, node, type, index,))
+    "GROUP BY sr.eui, bucket " \
+    "ORDER BY bucket ASC", (type, bucket, bucket, ftype, startTs, endTs, node, type, index,))
     readings=cursor.fetchall()
     conn.close()
         
     return readings
+
 
 def getRecentEvents(node, num):
     conn=connessione()
